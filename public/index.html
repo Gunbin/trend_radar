@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TREND-RADAR</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="crt"></div>
+  <div class="scanlines"></div>
+  <div class="container">
+    <header class="header">
+      <h1 class="glitch" data-text="[ TREND-RADAR // v1.0.0 ]">[ TREND-RADAR // v1.0.0 ]</h1>
+      <p class="status">SYS.STATUS: <span class="neon-text">ONLINE</span> // LAST_SYNC: <span id="last-update">--:--:--</span></p>
+      <div class="header-actions">
+          <button id="analyze-btn" class="ai-btn">GENERATE AI INSIGHTS</button>
+          <button id="settings-btn" class="settings-btn">⚙ SETTINGS</button>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    </header>
+
+    <main class="grid">
+      <!-- Google Trends -->
+      <section class="panel google-panel">
+        <h2 class="panel-title">> GOOGLE_TRENDS_KR <span class="blink">_</span></h2>
+        <ul class="trend-list" id="google-list">
+          <li class="loading">ESTABLISHING CONNECTION...</li>
+        </ul>
+      </section>
+
+      <!-- Signal.bz -->
+      <section class="panel signal-panel">
+        <h2 class="panel-title">> NATE_KR <span class="blink">_</span></h2>
+        <ul class="trend-list" id="signal-list">
+          <li class="loading">ESTABLISHING CONNECTION...</li>
+        </ul>
+      </section>
+
+      <!-- Namuwiki -->
+      <section class="panel namu-panel">
+        <h2 class="panel-title">> SIGNAL_BZ_LIVE <span class="blink">_</span></h2>
+        <ul class="trend-list" id="namu-list">
+          <li class="loading">BYPASSING FIREWALL...</li>
+        </ul>
+      </section>
+    </main>
+    
+    <footer class="footer">
+      <div class="ticker-wrap">
+        <div class="ticker" id="trend-ticker">
+          LOADING GLOBAL TREND DATA... INITIALIZING...
+        </div>
+      </div>
+      <p>SYS.CMD: Awaiting input... <span class="blink">█</span></p>
+    </footer>
+  </div>
+
+  <!-- AI Analysis Section -->
+  <div id="ai-section" class="ai-container hidden">
+      <div class="ai-header">
+          <span class="ai-title">GEMINI_TREND_ANALYSIS_REPORT</span>
+          <button id="close-ai" class="close-btn">X</button>
+      </div>
+      <div id="ai-content" class="ai-content">
+          <div class="ai-loading">ANALYZING TRENDS WITH GEMINI...</div>
+      </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="post-modal hidden">
+      <div class="modal-container settings-container">
+          <div class="modal-header">
+              <span>SYSTEM_CONFIGURATION</span>
+              <button id="close-settings" class="modal-btn">CLOSE_&_SAVE</button>
+          </div>
+          <div class="settings-tabs">
+              <button class="tab-btn active" data-tab="general">GENERAL</button>
+              <button class="tab-btn" data-tab="prompts">PROMPT_INSPECTOR</button>
+          </div>
+          <div class="modal-body">
+              <div id="tab-general" class="tab-content">
+                  <div class="setting-group">
+                      <label>REFRESH_INTERVAL (SECONDS)</label>
+                      <div class="input-with-hint">
+                          <input type="number" id="cfg-interval" value="30" min="10">
+                          <span id="interval-hint" class="hint-text">≈ 0.5 MIN</span>
+                      </div>
+                  </div>
+                  <div class="setting-group">
+                      <label>ACTIVE_DATA_SOURCES</label>
+                      <div class="checkbox-group">
+                          <label><input type="checkbox" id="src-google" checked> GOOGLE_TRENDS</label>
+                          <label><input type="checkbox" id="src-nate" checked> NATE_TRENDS</label>
+                          <label><input type="checkbox" id="src-signal" checked> SIGNAL_BZ</label>
+                      </div>
+                  </div>
+                  <div class="setting-group">
+                      <label>AI_TOPIC_COUNT (MAX 5)</label>
+                      <input type="range" id="cfg-topics" min="1" max="5" value="3">
+                      <span id="topics-val">3 TOPICS</span>
+                  </div>
+              </div>
+              <div id="tab-prompts" class="tab-content hidden">
+                  <p class="read-only-notice">> ACCESS_MODE: READ_ONLY_PROTECTED</p>
+                  <pre id="prompt-viewer" class="code-view">LOADING_PROMPTS.YML...</pre>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <!-- Blog Post Preview Modal -->
+  <div id="post-modal" class="post-modal hidden">
+      <div class="modal-container">
+          <div class="modal-header">
+              <span id="modal-title">GENERATED_BLOG_POST_DRAFT</span>
+              <div class="modal-actions">
+                  <button id="copy-post" class="modal-btn">COPY_MD</button>
+                  <button id="close-post" class="modal-btn">CLOSE</button>
+              </div>
+          </div>
+          <div class="modal-body">
+              <div id="post-content" class="md-preview">
+                  INITIALIZING CONTENT GENERATION...
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

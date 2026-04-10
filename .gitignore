@@ -1,0 +1,23 @@
+# 의존성 파일
+node_modules/
+
+# 환경 변수 및 비밀 키
+.env
+.env.*
+!.env.example
+
+# 로그 파일
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# 운영체제 생성 파일
+.DS_Store
+Thumbs.db
+
+# IDE 및 에디터 설정
+.vscode/
+.idea/
+*.swp
+*.swo

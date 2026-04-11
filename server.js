@@ -8,6 +8,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import 'dotenv/config';
 import promptManager from './PromptManager.js';
 import fs from 'fs';
+import path from 'path';
 
 const app = express();
 app.use(cors());
@@ -23,7 +24,7 @@ async function getPexelsImage(keyword) {
       headers: { 'Authorization': process.env.PEXELS_API_KEY }
     });
     if (res.data.photos && res.data.photos.length > 0) {
-      return res.data.photos[0].src.large2x;
+      return res.data.photos[0].src.landscape;
     }
     return 'https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress&cs=tinysrgb&w=1200'; 
   } catch (error) {
@@ -166,10 +167,19 @@ app.post('/api/analyze', async (req, res) => {
   const topicCount = config?.topicCount || 3;
   const lang = region === 'US' ? 'en' : 'ko';
 
-  const modelsToTry = ["gemini-pro-latest", "gemini-flash-latest", "gemini-3-flash-preview", "gemini-2.0-flash"];
+  const modelsToTry = [
+    "gemini-3.1-pro",                     // UI: Gemini 3.1 Pro (최상위 지능)
+    "gemini-2.5-pro",                     // UI: Gemini 2.5 Pro
+    "gemini-3-flash",                     // UI: Gemini 3 Flash
+    "gemini-2.5-flash",                   // UI: Gemini 2.5 Flash
+    "gemini-2.0-flash",                   // UI: Gemini 2 Flash
+    "gemini-3.1-flash-lite",              // UI: Gemini 3.1 Flash Lite (500회 한도)
+    "gemini-2.5-flash-lite"               // UI: Gemini 2.5 Flash Lite
+  ];
   let lastError = null;
 
-  for (const modelName of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const modelName = modelsToTry[i];
     try {
       console.log(`Attempting Viral Analysis: ${modelName} (Count: ${topicCount}, Region: ${region})`);
       const model = genAI.getGenerativeModel({ model: modelName });
@@ -195,6 +205,10 @@ app.post('/api/analyze', async (req, res) => {
     } catch (error) {
       lastError = error;
       console.error(`Error with ${modelName}:`, error.message);
+      if (i < modelsToTry.length - 1) {
+        console.log(`[Rate Limit Guard] Waiting 2.5s before next model...`);
+        await new Promise(resolve => setTimeout(resolve, 2500));
+      }
       continue;
     }
   }
@@ -210,38 +224,100 @@ app.post('/api/generate-post', async (req, res) => {
     getPexelsImage(postPlan.seoKeywords[1] || 'insight')
   ]);
 
-  const modelsToTry = ["gemini-pro-latest", "gemini-flash-latest", "gemini-3-flash-preview", "gemini-2.0-flash"];
+  // Construct Hugo Front-matter in Backend for 100% reliability
+  const selectedTitle = postPlan.viralTitles ? 
+      (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
+      postPlan.viralTitle;
+  const selectedCategory = postPlan.category || "Tech and IT";
+  const currentDate = new Date().toISOString().split('T')[0];
+  const tags = Array.isArray(postPlan.seoKeywords) ? postPlan.seoKeywords : [];
+
+  const hugoHeader = `---
+author: "TrendRadar"
+title: "${selectedTitle.replace(/"/g, '\\"')}"
+date: ${currentDate}
+tags: [${tags.map(t => `"${t}"`).join(', ')}]
+description: "${(postPlan.metaDescription || '').replace(/"/g, '\\"')}"
+categories: ["${selectedCategory}"]
+thumbnail: "${thumbnailUrl}"
+---
+
+`;
+
+  const modelsToTry = [
+    "gemini-3.1-pro",                     // UI: Gemini 3.1 Pro (최상위 지능)
+    "gemini-2.5-pro",                     // UI: Gemini 2.5 Pro
+    "gemini-3-flash",                     // UI: Gemini 3 Flash
+    "gemini-2.5-flash",                   // UI: Gemini 2.5 Flash
+    "gemini-2.0-flash",                   // UI: Gemini 2 Flash
+    "gemini-3.1-flash-lite",              // UI: Gemini 3.1 Flash Lite (500회 한도)
+    "gemini-2.5-flash-lite"               // UI: Gemini 2.5 Flash Lite
+  ];
   
-  for (const modelName of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const modelName = modelsToTry[i];
     try {
-      console.log(`Generating Viral Post: ${modelName} (Region: ${region})`);
+      console.log(`Generating Viral Post Body: ${modelName} (Region: ${region})`);
       const model = genAI.getGenerativeModel({ model: modelName });
       
-      // Use the benefit title as default, or fallback to the first available title
-      const selectedTitle = postPlan.viralTitles ? 
-          (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
-          postPlan.viralTitle;
-
       const prompt = promptManager.getPrompt('post_writing', lang, {
-        viralTitles: JSON.stringify(postPlan.viralTitles || {}), // Pass entire object stringified for template replacement
-        viralTitle: selectedTitle, // Fallback for backward compatibility if needed
         mainKeyword: postPlan.mainKeyword,
         searchIntent: postPlan.searchIntent,
-        seoKeywords: postPlan.seoKeywords.join(', '),
-        lsiKeywords: postPlan.lsiKeywords ? postPlan.lsiKeywords.join(', ') : '',
+        seoKeywords: tags.join(', '),
+        lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
         coreMessage: postPlan.coreMessage,
-        metaDescription: postPlan.metaDescription || '',
-        current_date: new Date().toLocaleDateString(),
-        thumbnail_url: thumbnailUrl,
         context_url: contextUrl
       });
 
       const result = await model.generateContent(prompt);
       const response = await result.response;
-      return res.json({ markdown: response.text().trim().replace(/^```markdown|```$/g, "").trim() });
-    } catch (error) { continue; }
+      let bodyMarkdown = response.text().trim().replace(/^```markdown|```$/g, "").trim();
+      
+      // If AI accidentally outputted its own header, remove it
+      if (bodyMarkdown.startsWith('---')) {
+          const parts = bodyMarkdown.split('---');
+          if (parts.length >= 3) {
+              bodyMarkdown = parts.slice(2).join('---').trim();
+          }
+      }
+
+      return res.json({ markdown: hugoHeader + bodyMarkdown });
+    } catch (error) {
+      console.error(`Error with ${modelName}:`, error.message);
+      if (i < modelsToTry.length - 1) {
+        console.log(`[Rate Limit Guard] Waiting 2.5s before next model...`);
+        await new Promise(resolve => setTimeout(resolve, 2500));
+      }
+      continue;
+    }
   }
   res.status(500).json({ error: '본문 생성 실패' });
+});
+
+app.post('/api/publish', (req, res) => {
+  const { markdown, region = 'KR' } = req.body;
+  if (!markdown) return res.status(400).json({ error: 'Markdown content missing' });
+  
+  const lang = region === 'US' ? 'en' : 'ko';
+  
+  // Create a slug from timestamp to avoid special characters issues
+  const timestamp = Date.now();
+  const filename = `trend-${timestamp}.md`;
+  
+  // Path to autoHugoBlog/content/{lang}/blog/
+  const targetDir = path.join(process.cwd(), '..', 'autoHugoBlog', 'content', lang, 'blog');
+  const filePath = path.join(targetDir, filename);
+  
+  try {
+      if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, markdown, 'utf8');
+      res.json({ success: true, filePath: `/content/${lang}/blog/${filename}` });
+  } catch (error) {
+      console.error("Publish Error:", error);
+      res.status(500).json({ error: 'Failed to write markdown file to Hugo' });
+  }
 });
 
 const PORT = 3000;

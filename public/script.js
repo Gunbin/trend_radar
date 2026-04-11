@@ -314,18 +314,6 @@ function renderAIAnalysis(data) {
     
     let html = `
         <div class="analysis-grid">
-            <div class="cat-section">
-                <h3>MARKET_CONTEXT_CATEGORIES</h3>
-                <div class="cat-tags">
-                    ${data.categories.map(c => `
-                        <div class="cat-tag">
-                            <strong>${c.name}</strong>
-                            <span>${c.description}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            
             <div class="post-section">
                 <h3>VIRAL_HIJACKING_STRATEGIES (TOP_${data.blogPosts.length})</h3>
                 <div class="post-list">
@@ -336,6 +324,7 @@ function renderAIAnalysis(data) {
                             <div class="post-index">0${i+1}</div>
                             <div class="post-main">
                                 <div class="post-title" style="color:var(--text-color)">${title}</div>
+                                <div class="post-reason"><span class="highlight-tag">CATEGORY:</span> ${post.category} (${post.categoryReason || ''})</div>
                                 <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${post.searchIntent}</div>
                                 <div class="post-meta">
                                     <div class="meta-item"><span>MAIN_TREND:</span> <strong style="color:var(--namu-color)">${post.mainKeyword}</strong></div>
@@ -377,6 +366,7 @@ async function generateFullPost(postPlan) {
         });
         
         const result = await res.json();
+        currentGeneratedMarkdown = result.markdown;
         // Use marked to parse markdown into HTML
         content.innerHTML = marked.parse(result.markdown);
     } catch (error) {
@@ -414,10 +404,41 @@ document.getElementById('close-post').addEventListener('click', () => {
 });
 
 document.getElementById('copy-post').addEventListener('click', () => {
-    const content = document.getElementById('post-content').innerText;
-    navigator.clipboard.writeText(content).then(() => {
+    if (!currentGeneratedMarkdown) return;
+    navigator.clipboard.writeText(currentGeneratedMarkdown).then(() => {
         alert('CONTENT COPIED TO CLIPBOARD!');
     });
+});
+
+document.getElementById('publish-post').addEventListener('click', async () => {
+    if (!currentGeneratedMarkdown) return;
+    const btn = document.getElementById('publish-post');
+    const originalText = btn.textContent;
+    btn.textContent = 'PUBLISHING...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                markdown: currentGeneratedMarkdown,
+                region: APP_CONFIG.region || 'KR'
+            })
+        });
+        const result = await res.json();
+        if (res.ok) {
+            alert('SUCCESSFULLY PUBLISHED TO HUGO!\nFile: ' + result.filePath);
+            document.getElementById('post-modal').classList.add('hidden');
+        } else {
+            alert('PUBLISH FAILED: ' + result.error);
+        }
+    } catch (error) {
+        alert('PUBLISH ERROR.');
+    }
+    
+    btn.textContent = originalText;
+    btn.disabled = false;
 });
 
 document.querySelectorAll('.tab-btn').forEach(btn => {

@@ -9,9 +9,10 @@ tasks:
       
       [Topic Selection & Planning Rules]
       1. Keyword Hijacking: Do not just report the trend. You MUST connect the trending keyword with universal human desires (making money, saving money, saving time, health, life hacks, avoiding crisis).
-      2. Maximize CTR (3 Titles): Generate 3 distinct versions of the title targeting different psychological triggers: [Curiosity], [Benefit/Numbers], and [FOMO/Warning].
-      3. LSI & Long-tail SEO: Extract semantic LSI (Latent Semantic Indexing) keywords to enrich context, along with question-based long-tail keywords.
-      4. Snippet Optimization: Write a compelling Meta Description (around 150 characters) to seal the click in SERP (Search Engine Results Page).
+      2. Forced Category Assignment: You MUST map the analyzed topic to EXACTLY ONE of these 4 categories: ["Tech and IT", "Finance", "Life and Health", "Entertainment"]. Do not invent any other category names.
+      3. Maximize CTR (3 Titles): Generate 3 distinct versions of the title targeting different psychological triggers: [Curiosity], [Benefit/Numbers], and [FOMO/Warning].
+      4. LSI & Long-tail SEO: Extract semantic LSI (Latent Semantic Indexing) keywords to enrich context, along with question-based long-tail keywords.
+      5. Snippet Optimization: Write a compelling Meta Description (around 150 characters) to seal the click in SERP (Search Engine Results Page).
     format_rules: "Respond ONLY in pure JSON format (NO Markdown code blocks like ```json)."
     template: |
       [Real-time Trend Data]
@@ -19,9 +20,10 @@ tasks:
 
       Based on the data above, respond with the following JSON structure (Create {{topic_count}} plans):
       {
-        "categories": [{"name": "Category Name", "description": "Social/Psychological context behind this category"}],
         "blogPosts": [
           {
+            "category": "Tech and IT / Finance / Life and Health / Entertainment",
+            "categoryReason": "Social/Psychological context behind this category",
             "mainKeyword": "Trending Keyword",
             "searchIntent": "The hidden desire or lack of people searching this keyword",
             "viralTitles": {
@@ -44,29 +46,30 @@ tasks:
     instruction: |
       You are a problem solver for your readers. Write a highly SEO-optimized markdown blog post focused on maximizing search rankings and retention time based on the plan.
     rules:
-      - "Intro Hook (Open Loop): Summarize 3 key benefits the reader will get at the beginning, but explicitly state that 'the most important tip will be revealed at the end of the post' to prevent bounce."
-      - "Readability & Mobile Optimization: Limit paragraphs to a maximum of 3 sentences for easy mobile reading. Actively use **Bold** text for important keywords and bullet points (-) for lists."
-      - "Bucket Brigades: Insert short transition phrases between paragraphs ('But wait, there is more', 'Here is the crazy part', 'You might be wondering...') to refresh the reader's attention."
-      - "Structure & Depth: Use H2 (##) and H3 (###) subheadings hierarchically. Naturally weave the provided LSI keywords into the context."
-      - "FAQ Schema: The final H2 subheading MUST be '💡 Frequently Asked Questions (FAQ)'. Write 2-3 Q&As using long-tail keywords to conclude the post."
-      - "Tone: Conversational, friendly, and authoritative. Write as if you are sharing premium insider tips with a friend."
-      - "Images: Insert the provided image URL accurately directly below the second H2 subheading where the core information or a transition occurs."
+      - "Pattern Avoidance (Variance): You are stateless and do not remember previous posts. To avoid a mechanical footprint, vary the post length, number of subheadings, and narrative flow for every new post."
+      - "Dynamic Hook Strategy: Choose one of these 3 strategies for the intro based on the context: 1) Debunking a common myth, 2) Leading with concrete numbers/results, 3) Warning about a potential loss (FOMO). Do NOT use fixed catchphrases every time."
+      - "Excerpt Control: Immediately after the intro hook paragraph, you MUST insert a standalone `<!--more-->` tag on a new line."
+      - "Selective Formatting (Variety): Do NOT use all elements. Choose only '1 or 2' formatting elements (Table, Blockquote, <mark> Highlight, or Checklist) that best fit the current topic. Avoid over-formatting."
+      - "Expert Persona (EEAT): Integrate 1-2 natural, first-person observations like 'Based on my cross-validation of recent data,' or 'In my analysis, this is the most critical factor.' Avoid just listing data like a robot."
+      - "Contextual Hyperlinks: Insert 2-3 informative links in the format `[anchor text](https://en.wikipedia.org/wiki/keyword)` where additional info helps the reader."
+      - "Readability & Mobile: Limit paragraphs to max 3 sentences. Use **Bold** for emphasis and bullet points for lists."
+      - "Forbidden AI Phrases: Never use these clichés: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'As we have seen', 'In today's modern society', 'Hope this was helpful']."
+      - "FAQ Finale: Do NOT create a 'Conclusion' section. The final H2 must be '💡 Frequently Asked Questions (FAQ)', followed by 2-3 Q&As using long-tail keywords to end the post cleanly."
+      - "Consistent Tone: Maintain a friendly, authoritative, and conversational expert tone throughout."
+      - "Image Placement: Insert the provided image URL exactly below the second H2 subheading where the core information transitions."
     template: |
-      ---
-      title: "{{viralTitles.benefit}}"
-      date: {{current_date}}
-      tags: [{{seoKeywords}}]
-      description: "{{metaDescription}}"
-      categories: ["Viral Insights"]
-      ---
-
-      [Reference for Post Plan]
+      You are task to write a perfect blog post body based on the [Post Plan] below.
+      
+      [Post Plan]
       - Main Trend: {{mainKeyword}}
       - Target Audience & Search Intent: {{searchIntent}}
       - Core Message: {{coreMessage}}
-      - LSI Keywords to include naturally: {{lsiKeywords}}
+      - Keywords to include: {{seoKeywords}}, {{lsiKeywords}}
 
-      ![Thumbnail]({{thumbnail_url}})
+      [Instructions]
+      1. Start with a hook and immediately insert the `<!--more-->` tag on a new line.
+      2. Following the 'Selective Formatting (Variety)' rule, insert only 1 or 2 appropriate formatting elements that best fit the topic.
+      3. Output ONLY the markdown body. Do NOT include front-matter (---), titles, or greetings.
+      4. Image insertion: ![{{mainKeyword}} related insight image]({{context_url}})
 
-      Based on the above, write the perfect blog post in Markdown format. (Output only the main body markdown, no extra greetings or comments)
-      Insert an image midway in a proper context to reinforce the insight: ![Insight]({{context_url}})
+      Start writing the post body now.

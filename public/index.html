@@ -15,8 +15,12 @@
       <h1 class="glitch" data-text="[ TREND-RADAR // v1.0.0 ]">[ TREND-RADAR // v1.0.0 ]</h1>
       <p class="status">SYS.STATUS: <span class="neon-text">ONLINE</span> // LAST_SYNC: <span id="last-update">--:--:--</span></p>
       <div class="header-actions">
-          <button id="analyze-btn" class="ai-btn">GENERATE AI INSIGHTS</button>
+          <select id="region-select" class="settings-btn" style="appearance: none; outline: none; text-align: center; cursor: pointer;">
+              <option value="KR">REGION: KR</option>
+              <option value="US">REGION: US</option>
+          </select>
           <button id="settings-btn" class="settings-btn">⚙ SETTINGS</button>
+          <button id="analyze-btn" class="ai-btn">GENERATE AI INSIGHTS</button>
       </div>
       <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
     </header>
@@ -43,6 +47,22 @@
         <h2 class="panel-title">> SIGNAL_BZ_LIVE <span class="blink">_</span></h2>
         <ul class="trend-list" id="namu-list">
           <li class="loading">BYPASSING FIREWALL...</li>
+        </ul>
+      </section>
+
+      <!-- Reddit (US Only) -->
+      <section class="panel reddit-panel" style="display: none;">
+        <h2 class="panel-title">> REDDIT_POPULAR <span class="blink">_</span></h2>
+        <ul class="trend-list" id="reddit-list">
+          <li class="loading">CONNECTING TO REDDIT...</li>
+        </ul>
+      </section>
+
+      <!-- Yahoo News (US Only) -->
+      <section class="panel yahoo-panel" style="display: none;">
+        <h2 class="panel-title">> YAHOO_NEWS_US <span class="blink">_</span></h2>
+        <ul class="trend-list" id="yahoo-list">
+          <li class="loading">FETCHING RSS FEED...</li>
         </ul>
       </section>
     </main>
@@ -73,7 +93,10 @@
       <div class="modal-container settings-container">
           <div class="modal-header">
               <span>SYSTEM_CONFIGURATION</span>
-              <button id="close-settings" class="modal-btn">CLOSE_&_SAVE</button>
+              <div class="modal-actions">
+                  <button id="close-settings" class="modal-btn save-btn">SAVE_&_CLOSE</button>
+                  <button id="cancel-settings" class="modal-btn cancel-btn">CLOSE</button>
+              </div>
           </div>
           <div class="settings-tabs">
               <button class="tab-btn active" data-tab="general">GENERAL</button>
@@ -90,10 +113,15 @@
                   </div>
                   <div class="setting-group">
                       <label>ACTIVE_DATA_SOURCES</label>
-                      <div class="checkbox-group">
+                      <div class="checkbox-group" id="src-group-kr">
                           <label><input type="checkbox" id="src-google" checked> GOOGLE_TRENDS</label>
                           <label><input type="checkbox" id="src-nate" checked> NATE_TRENDS</label>
                           <label><input type="checkbox" id="src-signal" checked> SIGNAL_BZ</label>
+                      </div>
+                      <div class="checkbox-group hidden" id="src-group-us">
+                          <label><input type="checkbox" id="src-google-us" checked> GOOGLE_TRENDS</label>
+                          <label><input type="checkbox" id="src-reddit" checked> REDDIT_POPULAR</label>
+                          <label><input type="checkbox" id="src-yahoo" checked> YAHOO_NEWS</label>
                       </div>
                   </div>
                   <div class="setting-group">

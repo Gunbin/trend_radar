@@ -4,6 +4,8 @@
   --google-color: #00ffcc;
   --signal-color: #ff3366;
   --namu-color: #cc00ff;
+  --reddit-color: #ff4500;
+  --yahoo-color: #bd00ff;
   --grid-color: rgba(0, 255, 65, 0.2);
 }
 
@@ -113,6 +115,8 @@ h1 {
 .google-panel .panel-title { color: var(--google-color); text-shadow: 0 0 5px var(--google-color); border-color: var(--google-color); }
 .signal-panel .panel-title { color: var(--signal-color); text-shadow: 0 0 5px var(--signal-color); border-color: var(--signal-color); }
 .namu-panel .panel-title { color: var(--namu-color); text-shadow: 0 0 5px var(--namu-color); border-color: var(--namu-color); }
+.reddit-panel .panel-title { color: var(--reddit-color); text-shadow: 0 0 5px var(--reddit-color); border-color: var(--reddit-color); }
+.yahoo-panel .panel-title { color: var(--yahoo-color); text-shadow: 0 0 5px var(--yahoo-color); border-color: var(--yahoo-color); }
 
 /* Custom Scrollbar for list */
 .trend-list {
@@ -157,6 +161,8 @@ h1 {
 .google-panel .trend-item { border-left-color: var(--google-color); }
 .signal-panel .trend-item { border-left-color: var(--signal-color); }
 .namu-panel .trend-item { border-left-color: var(--namu-color); }
+.reddit-panel .trend-item { border-left-color: var(--reddit-color); }
+.yahoo-panel .trend-item { border-left-color: var(--yahoo-color); }
 
 .rank {
   font-size: 1.1rem;
@@ -628,6 +634,28 @@ h1 {
 }
 
 .modal-btn:hover { background: #fff; color: #000; }
+
+.modal-btn.save-btn {
+    border-color: var(--google-color);
+    color: var(--google-color);
+}
+
+.modal-btn.save-btn:hover {
+    background: var(--google-color);
+    color: #000;
+    box-shadow: 0 0 10px var(--google-color);
+}
+
+.modal-btn.cancel-btn {
+    border-color: var(--signal-color);
+    color: var(--signal-color);
+}
+
+.modal-btn.cancel-btn:hover {
+    background: var(--signal-color);
+    color: #000;
+    box-shadow: 0 0 10px var(--signal-color);
+}
 
 .modal-body {
     flex: 1;

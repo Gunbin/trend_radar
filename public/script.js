@@ -3,8 +3,12 @@ let timeRemaining = 30000;
 let currentTrendsData = null;
 let APP_CONFIG = {
     interval: 30000,
-    sources: { google: true, nate: true, signal: true },
-    topicCount: 3
+    sources: { 
+        KR: { google: true, nate: true, signal: true },
+        US: { google: true, reddit: true, yahoo: true }
+    },
+    topicCount: 3,
+    region: 'KR'
 };
 
 // Load settings from localStorage
@@ -13,29 +17,55 @@ function loadSettings() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            APP_CONFIG = { ...APP_CONFIG, ...parsed };
+            // Migrate old sources format
+            if (parsed.sources && typeof parsed.sources.google === 'boolean') {
+                APP_CONFIG.sources.KR.google = parsed.sources.google;
+                APP_CONFIG.sources.KR.nate = parsed.sources.nate;
+                APP_CONFIG.sources.KR.signal = parsed.sources.signal;
+            } else if (parsed.sources) {
+                APP_CONFIG.sources = { ...APP_CONFIG.sources, ...parsed.sources };
+            }
+            APP_CONFIG.interval = parsed.interval || APP_CONFIG.interval;
+            APP_CONFIG.topicCount = parsed.topicCount || APP_CONFIG.topicCount;
+            APP_CONFIG.region = parsed.region || APP_CONFIG.region;
         } catch (e) {
             console.error('Failed to parse settings', e);
         }
     }
-    // Sync UI with config
+    syncUIToSettings();
+}
+
+function syncUIToSettings() {
     document.getElementById('cfg-interval').value = APP_CONFIG.interval / 1000;
-    document.getElementById('src-google').checked = APP_CONFIG.sources.google;
-    document.getElementById('src-nate').checked = APP_CONFIG.sources.nate;
-    document.getElementById('src-signal').checked = APP_CONFIG.sources.signal;
+    
+    document.getElementById('src-google').checked = APP_CONFIG.sources.KR.google;
+    document.getElementById('src-nate').checked = APP_CONFIG.sources.KR.nate;
+    document.getElementById('src-signal').checked = APP_CONFIG.sources.KR.signal;
+    
+    document.getElementById('src-google-us').checked = APP_CONFIG.sources.US.google;
+    document.getElementById('src-reddit').checked = APP_CONFIG.sources.US.reddit;
+    document.getElementById('src-yahoo').checked = APP_CONFIG.sources.US.yahoo;
+
     document.getElementById('cfg-topics').value = APP_CONFIG.topicCount;
+    document.getElementById('region-select').value = APP_CONFIG.region || 'KR';
+    
     updateIntervalHint(APP_CONFIG.interval / 1000);
     document.getElementById('topics-val').textContent = `${APP_CONFIG.topicCount} TOPICS`;
     
-    // Apply source visibility
     updatePanelVisibility();
 }
 
 function saveSettings() {
     APP_CONFIG.interval = parseInt(document.getElementById('cfg-interval').value) * 1000;
-    APP_CONFIG.sources.google = document.getElementById('src-google').checked;
-    APP_CONFIG.sources.nate = document.getElementById('src-nate').checked;
-    APP_CONFIG.sources.signal = document.getElementById('src-signal').checked;
+    
+    APP_CONFIG.sources.KR.google = document.getElementById('src-google').checked;
+    APP_CONFIG.sources.KR.nate = document.getElementById('src-nate').checked;
+    APP_CONFIG.sources.KR.signal = document.getElementById('src-signal').checked;
+    
+    APP_CONFIG.sources.US.google = document.getElementById('src-google-us').checked;
+    APP_CONFIG.sources.US.reddit = document.getElementById('src-reddit').checked;
+    APP_CONFIG.sources.US.yahoo = document.getElementById('src-yahoo').checked;
+
     APP_CONFIG.topicCount = parseInt(document.getElementById('cfg-topics').value);
     
     localStorage.setItem('trendRadar_cfg', JSON.stringify(APP_CONFIG));
@@ -43,23 +73,53 @@ function saveSettings() {
     resetTimer(); 
 }
 
+document.getElementById('region-select').addEventListener('change', (e) => {
+    APP_CONFIG.region = e.target.value;
+    localStorage.setItem('trendRadar_cfg', JSON.stringify(APP_CONFIG));
+    updatePanelVisibility();
+    syncUIToSettings(); // Sync checkboxes visibility in settings
+    resetTimer(); // Immediately refetch on region change
+});
+
 function updatePanelVisibility() {
-    document.querySelector('.google-panel').style.display = APP_CONFIG.sources.google ? 'flex' : 'none';
-    document.querySelector('.signal-panel').style.display = APP_CONFIG.sources.nate ? 'flex' : 'none';
-    document.querySelector('.namu-panel').style.display = APP_CONFIG.sources.signal ? 'flex' : 'none';
+    const isKR = APP_CONFIG.region === 'KR';
+    
+    if (isKR) {
+        document.querySelector('.google-panel').style.display = APP_CONFIG.sources.KR.google ? 'flex' : 'none';
+        document.querySelector('.signal-panel').style.display = APP_CONFIG.sources.KR.nate ? 'flex' : 'none';
+        document.querySelector('.namu-panel').style.display = APP_CONFIG.sources.KR.signal ? 'flex' : 'none';
+        document.querySelector('.reddit-panel').style.display = 'none';
+        document.querySelector('.yahoo-panel').style.display = 'none';
+        
+        document.getElementById('src-group-kr').classList.remove('hidden');
+        document.getElementById('src-group-us').classList.add('hidden');
+        document.querySelector('.google-panel .panel-title').innerHTML = '> GOOGLE_TRENDS_KR <span class="blink">_</span>';
+    } else {
+        document.querySelector('.google-panel').style.display = APP_CONFIG.sources.US.google ? 'flex' : 'none';
+        document.querySelector('.signal-panel').style.display = 'none';
+        document.querySelector('.namu-panel').style.display = 'none';
+        document.querySelector('.reddit-panel').style.display = APP_CONFIG.sources.US.reddit ? 'flex' : 'none';
+        document.querySelector('.yahoo-panel').style.display = APP_CONFIG.sources.US.yahoo ? 'flex' : 'none';
+        
+        document.getElementById('src-group-kr').classList.add('hidden');
+        document.getElementById('src-group-us').classList.remove('hidden');
+        document.querySelector('.google-panel .panel-title').innerHTML = '> GOOGLE_TRENDS_US <span class="blink">_</span>';
+    }
 }
 
 async function fetchTrends() {
   try {
-    const res = await fetch('/api/trends');
+    const res = await fetch(`/api/trends?region=${APP_CONFIG.region || 'KR'}`);
     const rawData = await res.json();
     
-    // Filter data based on active settings
+    // Filter data based on active settings and region
     const data = {
         timestamp: rawData.timestamp,
-        google: APP_CONFIG.sources.google ? rawData.google : [],
-        signal: APP_CONFIG.sources.nate ? rawData.signal : [],
-        namu: APP_CONFIG.sources.signal ? rawData.namu : []
+        google: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.google) || (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.google) ? rawData.google : [],
+        signal: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.nate) ? rawData.signal : [],
+        namu: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.signal) ? rawData.namu : [],
+        reddit: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.reddit) ? rawData.reddit : [],
+        yahoo: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.yahoo) ? rawData.yahoo : []
     };
     
     currentTrendsData = data; 
@@ -67,7 +127,7 @@ async function fetchTrends() {
     const date = new Date(data.timestamp);
     document.getElementById('last-update').textContent = date.toLocaleTimeString();
 
-    if (APP_CONFIG.sources.google) {
+    if ((APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.google) || (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.google)) {
         renderList('google-list', data.google, (item) => `
           <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
             <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
@@ -89,7 +149,7 @@ async function fetchTrends() {
         `);
     }
 
-    if (APP_CONFIG.sources.nate) {
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.nate) {
         renderList('signal-list', data.signal, (item) => {
           let statusClass = 'status-same';
           let icon = '-';
@@ -112,7 +172,7 @@ async function fetchTrends() {
         });
     }
 
-    if (APP_CONFIG.sources.signal) {
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.signal) {
         renderList('namu-list', data.namu, (item) => {
           const isError = item.status === 'ERROR';
           const colorStyle = isError ? 'color: #ff3333;' : '';
@@ -131,14 +191,50 @@ async function fetchTrends() {
         });
     }
 
+    if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.reddit) {
+        renderList('reddit-list', data.reddit, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:var(--reddit-color)">SCORE: ${item.score}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] View Post</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.yahoo) {
+        renderList('yahoo-list', data.yahoo, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:var(--yahoo-color)">> PUB: ${new Date(item.pubDate).toLocaleDateString()}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">Read News</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
     const allKeywords = [
-      ...data.google.map(i => i.keyword),
-      ...data.signal.map(i => i.keyword),
-      ...data.namu.map(i => i.keyword)
+      ...(data.google || []).map(i => i.keyword),
+      ...(data.signal || []).map(i => i.keyword),
+      ...(data.namu || []).map(i => i.keyword),
+      ...(data.reddit || []).map(i => i.keyword),
+      ...(data.yahoo || []).map(i => i.keyword)
     ];
     document.getElementById('trend-ticker').textContent = ' >>> ' + allKeywords.join(' | ') + ' <<< ';
 
-    resetTimer();
+    // Restart timer when successfully fetched
+    clearInterval(timerInterval);
+    timeRemaining = APP_CONFIG.interval;
+    document.getElementById('progress').style.width = '0%';
+    startTimer();
 
   } catch (error) {
     console.error('Failed to fetch trends:', error);
@@ -178,7 +274,7 @@ function resetTimer() {
   clearInterval(timerInterval);
   timeRemaining = APP_CONFIG.interval;
   document.getElementById('progress').style.width = '0%';
-  startTimer();
+  fetchTrends(); // Fetch immediately on manual reset
 }
 
 // AI Analysis Functionality
@@ -197,7 +293,8 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 trends: currentTrendsData,
-                config: { topicCount: APP_CONFIG.topicCount }
+                config: { topicCount: APP_CONFIG.topicCount },
+                region: APP_CONFIG.region || 'KR'
             })
         });
         
@@ -232,24 +329,28 @@ function renderAIAnalysis(data) {
             <div class="post-section">
                 <h3>VIRAL_HIJACKING_STRATEGIES (TOP_${data.blogPosts.length})</h3>
                 <div class="post-list">
-                    ${data.blogPosts.map((post, i) => `
+                    ${data.blogPosts.map((post, i) => {
+                        const title = post.viralTitles ? (post.viralTitles.benefit || post.viralTitles.curiosity || post.mainKeyword) : post.viralTitle;
+                        return `
                         <div class="post-card marketing-card">
                             <div class="post-index">0${i+1}</div>
                             <div class="post-main">
-                                <div class="post-title" style="color:var(--text-color)">${post.viralTitle}</div>
+                                <div class="post-title" style="color:var(--text-color)">${title}</div>
                                 <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${post.searchIntent}</div>
                                 <div class="post-meta">
                                     <div class="meta-item"><span>MAIN_TREND:</span> <strong style="color:var(--namu-color)">${post.mainKeyword}</strong></div>
                                     <div class="meta-item"><span>SEO_KEYWORDS:</span> ${post.seoKeywords.join(', ')}</div>
+                                    ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${post.lsiKeywords.join(', ')}</div>` : ''}
                                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${post.coreMessage}</div>
-                                    <div class="meta-item"><span>VIRAL_STRATEGY:</span> ${post.strategy}</div>
+                                    <div class="meta-item"><span>HOOK_STRATEGY:</span> ${post.hookStrategy || post.strategy || ''}</div>
                                 </div>
                                 <button class="write-btn" onclick='generateFullPost(${JSON.stringify(post).replace(/'/g, "&apos;")})'>
                                     WRITE_SEO_OPTIMIZED_POST
                                 </button>
                             </div>
                         </div>
-                    `).join('')}
+                        `
+                    }).join('')}
                 </div>
             </div>
         </div>
@@ -269,7 +370,10 @@ async function generateFullPost(postPlan) {
         const res = await fetch('/api/generate-post', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ postPlan })
+            body: JSON.stringify({ 
+                postPlan,
+                region: APP_CONFIG.region || 'KR'
+            })
         });
         
         const result = await res.json();
@@ -282,10 +386,12 @@ async function generateFullPost(postPlan) {
 
 // Settings Modal Logic
 document.getElementById('settings-btn').addEventListener('click', async () => {
+    syncUIToSettings(); // Make sure values are fresh
     document.getElementById('settings-modal').classList.remove('hidden');
-    // Fetch prompt for inspector
+    // Fetch prompt for inspector based on current region language
     try {
-        const res = await fetch('/api/config/prompts');
+        const lang = APP_CONFIG.region === 'US' ? 'en' : 'ko';
+        const res = await fetch(`/api/config/prompts?lang=${lang}`);
         const data = await res.json();
         document.getElementById('prompt-viewer').textContent = data.yaml;
     } catch (e) {
@@ -298,14 +404,19 @@ document.getElementById('close-settings').addEventListener('click', () => {
     document.getElementById('settings-modal').classList.add('hidden');
 });
 
+document.getElementById('cancel-settings').addEventListener('click', () => {
+    syncUIToSettings(); // Revert to saved settings
+    document.getElementById('settings-modal').classList.add('hidden');
+});
+
 document.getElementById('close-post').addEventListener('click', () => {
     document.getElementById('post-modal').classList.add('hidden');
 });
 
 document.getElementById('copy-post').addEventListener('click', () => {
-    const content = document.getElementById('post-content').textContent;
+    const content = document.getElementById('post-content').innerText;
     navigator.clipboard.writeText(content).then(() => {
-        alert('MARKDOWN COPIED TO CLIPBOARD!');
+        alert('CONTENT COPIED TO CLIPBOARD!');
     });
 });
 
@@ -333,4 +444,7 @@ function updateIntervalHint(sec) {
 
 // Initialization
 loadSettings();
-setTimeout(fetchTrends, 1000);
+// Initial fetch is handled by updatePanelVisibility -> resetTimer -> fetchTrends internally or explicitly.
+if(!timerInterval) {
+    resetTimer();
+}

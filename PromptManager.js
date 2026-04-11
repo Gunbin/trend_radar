@@ -4,26 +4,33 @@ import YAML from 'yaml';
 class PromptManager {
     constructor() {
         this.prompts = {};
-        this.loadConfig();
+        this.loadConfig('ko', './prompts_ko.yml');
+        this.loadConfig('en', './prompts_en.yml');
     }
 
     // 설정 파일 로드
-    loadConfig() {
+    loadConfig(lang, filePath) {
         try {
-            const file = fs.readFileSync('./prompts.yml', 'utf8');
-            const config = YAML.parse(file);
-            this.prompts = config.tasks;
-            console.log('✅ Prompt configuration loaded successfully.');
+            if (fs.existsSync(filePath)) {
+                const file = fs.readFileSync(filePath, 'utf8');
+                const config = YAML.parse(file);
+                this.prompts[lang] = config.tasks;
+                console.log(`✅ Prompt configuration (${lang}) loaded successfully.`);
+            } else {
+                console.warn(`⚠️ Prompt file not found: ${filePath}`);
+                this.prompts[lang] = {};
+            }
         } catch (error) {
-            console.error('❌ Failed to load prompts.yml:', error.message);
+            console.error(`❌ Failed to load ${filePath}:`, error.message);
         }
     }
 
     // 템플릿 변수 치환 및 최종 프롬프트 생성
-    getPrompt(taskId, data = {}) {
-        const task = this.prompts[taskId];
+    getPrompt(taskId, lang = 'ko', data = {}) {
+        const tasks = this.prompts[lang] || this.prompts['ko'];
+        const task = tasks[taskId];
         if (!task) {
-            throw new Error(`Task [${taskId}] not found in configuration.`);
+            throw new Error(`Task [${taskId}] not found in configuration for language [${lang}].`);
         }
 
         // 1. 기본 구조 결합 (페르소나 + 지시문 + 규칙)

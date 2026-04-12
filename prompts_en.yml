@@ -12,7 +12,7 @@ tasks:
       2. Forced Category Assignment: Choose EXACTLY ONE from ["Tech and IT", "Finance", "Life and Health", "Entertainment"].
       3. Maximize CTR: Generate titles based on [Curiosity], [Benefit/Numbers], and [FOMO/Warning].
       4. Niche SEO: Discover specific 'question-based long-tail keywords' that people actually type into search boxes.
-      5. Snippet Optimization: Write a compelling Meta Description (around 150 characters).
+      5. Image Search Strategy: For high-quality image results, extract 4 specific English keywords optimized for stock photo/illustration search (e.g., "minimalist office", "stressed professional", "healthy meal prep" - focus on nouns).
     format_rules: "Respond ONLY in pure JSON format."
     template: |
       [Real-time Trend Data]
@@ -34,6 +34,7 @@ tasks:
             "metaDescription": "Summary for search results",
             "seoKeywords": ["niche-long-tail-1", "niche-long-tail-2"],
             "lsiKeywords": ["lsi-1", "lsi-2", "lsi-3"],
+            "imageSearchKeywords": ["english-keyword-1", "english-keyword-2", "english-keyword-3", "english-keyword-4"],
             "coreMessage": "1-sentence summary of the practical solution",
             "hookStrategy": "Specific hook strategy"
           }
@@ -52,9 +53,9 @@ tasks:
       - "Big Bro/Sis Voice: Use a conversational 'you/me' style. Start with phrases like 'Look, I know this sounds confusing...', 'I did the digging so you don't have to.', or 'Here's the real deal on {{mainKeyword}}.'"
       - "Expert Persona (EEAT): Use first-person observations: 'I've checked the latest numbers, and...', 'Trust me, this is the part most people get wrong,' or 'Here's my take on this.' NO robot-like analysis terms."
       - "Dynamic Image Placement: You are provided with 3 image URLs ({{context_url_1}}, {{context_url_2}}, {{context_url_3}}). Choose 'between 1 to 3' images to place throughout the post based on the content flow. Do not use a fixed number of images every time."
-      - "Contextual Image Alt: When inserting images, describe a specific, relatable scene related to the post context in under 60 characters, including {{mainKeyword}}. (e.g., ![A relieved driver looking at their lower car insurance bill](URL))"
+      - "Contextual Image Alt: When inserting images, describe a specific, relatable scene related to the post context in under 60 characters, including {{mainKeyword}}. Use ONLY standard markdown (`![Alt](URL)`). Do NOT use extended syntax like `{:width='100%'}` or any extra attributes."
       - "Hugo Theme Feature: You MUST include a blockquote highlight: `> **💡 Big Bro/Sis Pro Tip:** Your actionable advice here.`"
-      - "Forbidden AI Phrases: Never use these: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'In today's fast-paced world', 'Unlocking the secrets', 'A game-changer', 'It's important to note', 'Furthermore', 'Moreover', 'In today's modern society', 'Hope this helps', 'Based on my analysis', 'Cross-validation', 'This post will guide you', 'In the following sections']."
+      - "Forbidden AI Phrases: Never use these: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'In today's fast-paced world', 'Unlocking the secrets', 'A game-changer', 'It's important to note', 'Furthermore', 'Moreover', 'In today's modern society', 'Hope this helps', 'Based on my analysis', 'Cross-validation', 'This post will guide you', 'In the following sections', '{:width']."
       - "FAQ Finale: Do NOT create a 'Conclusion' section. The final H2 must be '💡 Frequently Asked Questions (FAQ)', followed by 2-3 punchy Q&As."
       - "Consistent Tone: Be friendly, authoritative, and conversational."
     template: |

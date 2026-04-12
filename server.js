@@ -17,20 +17,132 @@ app.use(express.static('public'));
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Pexels API Integration
+// --- Translation Helper (For better image search) ---
+async function translateToEnglish(keyword) {
+  if (!keyword || keyword.trim() === '') return 'abstract';
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `Translate the following Korean blog keyword into a simple, clear English search term for an image database (like Pexels/Pixabay). Output ONLY the English words, no punctuation or extra text. Keyword: "${keyword}"`;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let translated = response.text().trim().replace(/["'.]/g, '');
+    return translated || keyword; 
+  } catch (error) {
+    console.error('Translation Error:', error.message);
+    return keyword; 
+  }
+}
+
+// --- Image Fetchers ---
+
+// 1. Pexels (Photos)
 async function getPexelsImage(keyword) {
   try {
-    const res = await axios.get(`https://api.pexels.com/v1/search?query=${keyword}&per_page=1`, {
+    const res = await axios.get(`https://api.pexels.com/v1/search?query=${encodeURIComponent(keyword)}&per_page=10`, {
       headers: { 'Authorization': process.env.PEXELS_API_KEY }
     });
     if (res.data.photos && res.data.photos.length > 0) {
-      return res.data.photos[0].src.landscape;
+      const randomIndex = Math.floor(Math.random() * Math.min(res.data.photos.length, 5));
+      return res.data.photos[randomIndex].src.landscape;
     }
-    return 'https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress&cs=tinysrgb&w=1200'; 
   } catch (error) {
     console.error('Pexels API Error:', error.message);
-    return 'https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress&cs=tinysrgb&w=1200';
   }
+  return null;
+}
+
+// 2. Pixabay (Photos, Illustrations, Vectors)
+async function getPixabayImage(keyword, type = 'all') {
+  if (!process.env.PIXABAY_API_KEY) return null;
+  try {
+    const res = await axios.get(`https://pixabay.com/api/`, {
+      params: {
+        key: process.env.PIXABAY_API_KEY,
+        q: keyword,
+        image_type: type,
+        per_page: 5,
+        safesearch: 'true'
+      }
+    });
+    if (res.data.hits && res.data.hits.length > 0) {
+      const randomIndex = Math.floor(Math.random() * res.data.hits.length);
+      // Use webformatURL (max 640px) for better loading speed
+      return res.data.hits[randomIndex].webformatURL;
+    }
+    
+    // Fallback: If no results, try searching with only the first two words
+    const simplified = keyword.split(' ').slice(0, 2).join(' ');
+    if (simplified !== keyword) {
+      return await getPixabayImage(simplified, type);
+    }
+  } catch (error) {
+    console.error('Pixabay API Error:', error.message);
+  }
+  return null;
+}
+
+// 3. Openverse (Creative Commons)
+async function getOpenverseImage(keyword) {
+  try {
+    const res = await axios.get(`https://api.openverse.org/v1/images/`, {
+      params: { q: keyword, page_size: 5 },
+      headers: { 'User-Agent': 'TrendRadar/1.0' }
+    });
+    if (res.data.results && res.data.results.length > 0) {
+      const randomIndex = Math.floor(Math.random() * res.data.results.length);
+      // Openverse URLs vary, so we just take the result URL
+      return res.data.results[randomIndex].url;
+    }
+  } catch (error) {
+    console.error('Openverse API Error:', error.message);
+  }
+  return null;
+}
+
+// --- Master Image Dispatcher ---
+async function getRandomImage(keyword, isThumbnail = false) {
+  // If the keyword looks like an array (passed from postPlan.imageSearchKeywords), pick one
+  let searchQuery = keyword;
+  if (Array.isArray(keyword)) {
+    // Pick a random keyword from the provided list for variety
+    searchQuery = keyword[Math.floor(Math.random() * keyword.length)];
+  }
+
+  console.log(`[Image Search] Query: ${searchQuery} (${isThumbnail ? 'Thumbnail' : 'Body'})`);
+
+  let imageUrl = null;
+  
+  // Define sources
+  const thumbnailSources = [
+    () => getPixabayImage(searchQuery, 'illustration'),
+    () => getPixabayImage(searchQuery, 'vector'),
+    () => getOpenverseImage(searchQuery + " illustration")
+  ];
+
+  const bodySources = [
+    () => getPexelsImage(searchQuery),
+    () => getPixabayImage(searchQuery, 'photo'),
+    () => getPixabayImage(searchQuery, 'illustration'),
+    () => getOpenverseImage(searchQuery)
+  ];
+
+  const targetSources = isThumbnail ? thumbnailSources : bodySources;
+  const shuffledSources = targetSources.sort(() => Math.random() - 0.5);
+
+  for (const fetcher of shuffledSources) {
+    imageUrl = await fetcher();
+    if (imageUrl) {
+      console.log(`[Image Found] Source: ${fetcher.toString().match(/get(\w+)Image/)?.[1] || 'Unknown'}`);
+      break;
+    }
+  }
+
+  // Final Fallback: Try Pexels with the query directly if everything fails
+  if (!imageUrl) {
+    imageUrl = await getPexelsImage(searchQuery) || 'https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress&cs=tinysrgb&w=1200';
+  }
+
+  return imageUrl;
 }
 
 // 1. Google Trends (다국어 지원)
@@ -191,10 +303,8 @@ app.post('/api/analyze', async (req, res) => {
       const result = await model.generateContent(prompt);
       const response = await result.response;
       let text = response.text().trim();
-      // 보다 강력한 JSON 파싱 대응 (마크다운 백틱 및 앞뒤 불필요한 문자열 제거)
       text = text.replace(/^```(json)?|```$/gi, "").trim();
       
-      // JSON 객체 앞뒤에 텍스트가 붙어있을 경우를 대비해 중괄호/대괄호 추출
       const firstBrace = text.indexOf('{');
       const lastBrace = text.lastIndexOf('}');
       if (firstBrace !== -1 && lastBrace !== -1) {
@@ -206,7 +316,6 @@ app.post('/api/analyze', async (req, res) => {
       lastError = error;
       console.error(`Error with ${modelName}:`, error.message);
       if (i < modelsToTry.length - 1) {
-        console.log(`[Rate Limit Guard] Waiting 2.5s before next model...`);
         await new Promise(resolve => setTimeout(resolve, 2500));
       }
       continue;
@@ -219,20 +328,19 @@ app.post('/api/generate-post', async (req, res) => {
   const { postPlan, region = 'KR' } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
   
-  // Fetch thumbnail and 3 different context images
+  // Fetch thumbnail and 3 different context images using the Master Dispatcher
   const [thumbnailUrl, contextUrl1, contextUrl2, contextUrl3] = await Promise.all([
-    getPexelsImage(postPlan.seoKeywords[0] || postPlan.mainKeyword),
-    getPexelsImage(postPlan.seoKeywords[1] || postPlan.mainKeyword),
-    getPexelsImage(postPlan.lsiKeywords?.[0] || postPlan.mainKeyword),
-    getPexelsImage(postPlan.lsiKeywords?.[1] || 'insight')
+    getRandomImage(postPlan.mainKeyword, true), // Thumbnail (Illustration/Cartoon)
+    getRandomImage(postPlan.seoKeywords?.[0] || postPlan.mainKeyword, false), // Body 1
+    getRandomImage(postPlan.seoKeywords?.[1] || postPlan.lsiKeywords?.[0] || postPlan.mainKeyword, false), // Body 2
+    getRandomImage(postPlan.lsiKeywords?.[1] || 'insight', false) // Body 3
   ]);
 
-  // Construct Hugo Front-matter in Backend for 100% reliability
+  // Construct Hugo Front-matter in Backend
   const selectedTitle = postPlan.viralTitles ? 
       (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
       postPlan.viralTitle;
   
-  // Normalize category: Always use 'and' instead of '&' to match Hugo setup
   let selectedCategory = postPlan.category || "Tech and IT";
   selectedCategory = selectedCategory.replace(/&/g, 'and').replace(/\s+/g, ' ').trim();
   
@@ -282,7 +390,6 @@ thumbnail: "${thumbnailUrl}"
       const response = await result.response;
       let bodyMarkdown = response.text().trim().replace(/^```markdown|```$/g, "").trim();
       
-      // If AI accidentally outputted its own header, remove it
       if (bodyMarkdown.startsWith('---')) {
           const parts = bodyMarkdown.split('---');
           if (parts.length >= 3) {
@@ -294,7 +401,6 @@ thumbnail: "${thumbnailUrl}"
     } catch (error) {
       console.error(`Error with ${modelName}:`, error.message);
       if (i < modelsToTry.length - 1) {
-        console.log(`[Rate Limit Guard] Waiting 2.5s before next model...`);
         await new Promise(resolve => setTimeout(resolve, 2500));
       }
       continue;
@@ -308,12 +414,9 @@ app.post('/api/publish', (req, res) => {
   if (!markdown) return res.status(400).json({ error: 'Markdown content missing' });
   
   const lang = region === 'US' ? 'en' : 'ko';
-  
-  // Create a slug from timestamp to avoid special characters issues
   const timestamp = Date.now();
   const filename = `trend-${timestamp}.md`;
   
-  // Path to autoHugoBlog/content/{lang}/blog/
   const targetDir = path.join(process.cwd(), '..', 'autoHugoBlog', 'content', lang, 'blog');
   const filePath = path.join(targetDir, filename);
   

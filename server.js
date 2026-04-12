@@ -219,16 +219,23 @@ app.post('/api/generate-post', async (req, res) => {
   const { postPlan, region = 'KR' } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
   
-  const [thumbnailUrl, contextUrl] = await Promise.all([
+  // Fetch thumbnail and 3 different context images
+  const [thumbnailUrl, contextUrl1, contextUrl2, contextUrl3] = await Promise.all([
     getPexelsImage(postPlan.seoKeywords[0] || postPlan.mainKeyword),
-    getPexelsImage(postPlan.seoKeywords[1] || 'insight')
+    getPexelsImage(postPlan.seoKeywords[1] || postPlan.mainKeyword),
+    getPexelsImage(postPlan.lsiKeywords?.[0] || postPlan.mainKeyword),
+    getPexelsImage(postPlan.lsiKeywords?.[1] || 'insight')
   ]);
 
   // Construct Hugo Front-matter in Backend for 100% reliability
   const selectedTitle = postPlan.viralTitles ? 
       (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
       postPlan.viralTitle;
-  const selectedCategory = postPlan.category || "Tech and IT";
+  
+  // Normalize category: Always use 'and' instead of '&' to match Hugo setup
+  let selectedCategory = postPlan.category || "Tech and IT";
+  selectedCategory = selectedCategory.replace(/&/g, 'and').replace(/\s+/g, ' ').trim();
+  
   const currentDate = new Date().toISOString().split('T')[0];
   const tags = Array.isArray(postPlan.seoKeywords) ? postPlan.seoKeywords : [];
 
@@ -266,7 +273,9 @@ thumbnail: "${thumbnailUrl}"
         seoKeywords: tags.join(', '),
         lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
         coreMessage: postPlan.coreMessage,
-        context_url: contextUrl
+        context_url_1: contextUrl1,
+        context_url_2: contextUrl2,
+        context_url_3: contextUrl3
       });
 
       const result = await model.generateContent(prompt);

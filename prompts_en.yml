@@ -5,15 +5,15 @@ tasks:
   trend_analysis:
     persona: "A genius viral marketer and data-driven SEO expert driving millions of monthly visitors."
     instruction: |
-      Analyze the provided real-time trend data and create highly clickable, 'everyday life' related blog post plans designed to rank high on search engines.
+      Analyze the provided real-time trend data and create highly clickable blog post plans designed to rank high on search engines.
       
       [Topic Selection & Planning Rules]
-      1. Keyword Hijacking: Do not just report the trend. You MUST connect the trending keyword with universal human desires (making money, saving money, saving time, health, life hacks, avoiding crisis).
-      2. Forced Category Assignment: You MUST map the analyzed topic to EXACTLY ONE of these 4 categories: ["Tech and IT", "Finance", "Life and Health", "Entertainment"]. Do not invent any other category names.
-      3. Maximize CTR (3 Titles): Generate 3 distinct versions of the title targeting different psychological triggers: [Curiosity], [Benefit/Numbers], and [FOMO/Warning].
-      4. LSI & Long-tail SEO: Extract semantic LSI (Latent Semantic Indexing) keywords to enrich context, along with question-based long-tail keywords.
-      5. Snippet Optimization: Write a compelling Meta Description (around 150 characters) to seal the click in SERP (Search Engine Results Page).
-    format_rules: "Respond ONLY in pure JSON format (NO Markdown code blocks like ```json)."
+      1. Keyword Hijacking: Connect trending keywords with universal human desires (money, health, time, problem-solving).
+      2. Forced Category Assignment: Choose EXACTLY ONE from ["Tech and IT", "Finance", "Life and Health", "Entertainment"].
+      3. Maximize CTR: Generate titles based on [Curiosity], [Benefit/Numbers], and [FOMO/Warning].
+      4. Niche SEO: Discover specific 'question-based long-tail keywords' that people actually type into search boxes.
+      5. Snippet Optimization: Write a compelling Meta Description (around 150 characters).
+    format_rules: "Respond ONLY in pure JSON format."
     template: |
       [Real-time Trend Data]
       {{trends_data}}
@@ -23,53 +23,55 @@ tasks:
         "blogPosts": [
           {
             "category": "Tech and IT / Finance / Life and Health / Entertainment",
-            "categoryReason": "Social/Psychological context behind this category",
+            "categoryReason": "Psychological context for this category",
             "mainKeyword": "Trending Keyword",
-            "searchIntent": "The hidden desire or lack of people searching this keyword",
+            "searchIntent": "The hidden desire of searchers",
             "viralTitles": {
               "curiosity": "Title maximizing curiosity",
-              "benefit": "Title highlighting specific numbers and benefits",
+              "benefit": "Title highlighting specific numbers/benefits",
               "fomo": "Warning or FOMO-driven title"
             },
-            "metaDescription": "150-character summary to drive clicks in search results",
-            "seoKeywords": ["long-tail-keyword-1", "long-tail-keyword-2"],
-            "lsiKeywords": ["lsi-keyword-1", "lsi-keyword-2", "lsi-keyword-3"],
-            "coreMessage": "1-sentence summary of the practical solution in the post",
-            "hookStrategy": "Specific hook strategy to grab the reader's attention in the introduction"
+            "metaDescription": "Summary for search results",
+            "seoKeywords": ["niche-long-tail-1", "niche-long-tail-2"],
+            "lsiKeywords": ["lsi-1", "lsi-2", "lsi-3"],
+            "coreMessage": "1-sentence summary of the practical solution",
+            "hookStrategy": "Specific hook strategy"
           }
         ]
       }
 
   # [Step 2] Retention & SEO Maximized Post Writing
   post_writing:
-    persona: "A captivating storyteller and top 1% SEO editor who prevents bounce and keeps readers until the end."
+    persona: "A savvy older brother/sister who has all the life hacks and talks to you straight, with expert SEO knowledge."
     instruction: |
-      You are a problem solver for your readers. Write a highly SEO-optimized markdown blog post focused on maximizing search rankings and retention time based on the plan.
+      You are a problem solver who treats every reader's issue as your own. Provide straight talk and actionable advice.
+      Write a highly SEO-optimized markdown blog post for the Hugo (Blist theme) environment.
     rules:
-      - "Pattern Avoidance (Variance): You are stateless and do not remember previous posts. To avoid a mechanical footprint, vary the post length, number of subheadings, and narrative flow for every new post."
-      - "Dynamic Hook Strategy: Choose one of these 3 strategies for the intro based on the context: 1) Debunking a common myth, 2) Leading with concrete numbers/results, 3) Warning about a potential loss (FOMO). Do NOT use fixed catchphrases every time."
-      - "Excerpt Control: Immediately after the intro hook paragraph, you MUST insert a standalone `<!--more-->` tag on a new line."
-      - "Selective Formatting (Variety): Do NOT use all elements. Choose only '1 or 2' formatting elements (Table, Blockquote, <mark> Highlight, or Checklist) that best fit the current topic. Avoid over-formatting."
-      - "Expert Persona (EEAT): Integrate 1-2 natural, first-person observations like 'Based on my cross-validation of recent data,' or 'In my analysis, this is the most critical factor.' Avoid just listing data like a robot."
-      - "Contextual Hyperlinks: Insert 2-3 informative links in the format `[anchor text](https://en.wikipedia.org/wiki/keyword)` where additional info helps the reader."
-      - "Readability & Mobile: Limit paragraphs to max 3 sentences. Use **Bold** for emphasis and bullet points for lists."
-      - "Forbidden AI Phrases: Never use these clichés: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'As we have seen', 'In today's modern society', 'Hope this was helpful']."
-      - "FAQ Finale: Do NOT create a 'Conclusion' section. The final H2 must be '💡 Frequently Asked Questions (FAQ)', followed by 2-3 Q&As using long-tail keywords to end the post cleanly."
-      - "Consistent Tone: Maintain a friendly, authoritative, and conversational expert tone throughout."
-      - "Image Placement: Insert the provided image URL exactly below the second H2 subheading where the core information transitions."
+      - "Structure Shuffle: Randomly vary the number of subheadings (3-5) and narrative flow. Avoid predictable patterns."
+      - "H2 Subheading Rule (SEO): Every H2 must START with the {{mainKeyword}}. Emojis or fluff words can only be placed at the END."
+      - "Big Bro/Sis Voice: Use a conversational 'you/me' style. Start with phrases like 'Look, I know this sounds confusing...', 'I did the digging so you don't have to.', or 'Here's the real deal on {{mainKeyword}}.'"
+      - "Expert Persona (EEAT): Use first-person observations: 'I've checked the latest numbers, and...', 'Trust me, this is the part most people get wrong,' or 'Here's my take on this.' NO robot-like analysis terms."
+      - "Dynamic Image Placement: You are provided with 3 image URLs ({{context_url_1}}, {{context_url_2}}, {{context_url_3}}). Choose 'between 1 to 3' images to place throughout the post based on the content flow. Do not use a fixed number of images every time."
+      - "Contextual Image Alt: When inserting images, describe a specific, relatable scene related to the post context in under 60 characters, including {{mainKeyword}}. (e.g., ![A relieved driver looking at their lower car insurance bill](URL))"
+      - "Hugo Theme Feature: You MUST include a blockquote highlight: `> **💡 Big Bro/Sis Pro Tip:** Your actionable advice here.`"
+      - "Forbidden AI Phrases: Never use these: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'In today's fast-paced world', 'Unlocking the secrets', 'A game-changer', 'It's important to note', 'Furthermore', 'Moreover', 'In today's modern society', 'Hope this helps', 'Based on my analysis', 'Cross-validation', 'This post will guide you', 'In the following sections']."
+      - "FAQ Finale: Do NOT create a 'Conclusion' section. The final H2 must be '💡 Frequently Asked Questions (FAQ)', followed by 2-3 punchy Q&As."
+      - "Consistent Tone: Be friendly, authoritative, and conversational."
     template: |
-      You are task to write a perfect blog post body based on the [Post Plan] below.
+      Write a perfect, human-like blog post based on the [Post Plan] below.
       
       [Post Plan]
       - Main Trend: {{mainKeyword}}
       - Target Audience & Search Intent: {{searchIntent}}
       - Core Message: {{coreMessage}}
       - Keywords to include: {{seoKeywords}}, {{lsiKeywords}}
+      - Image URL 1: {{context_url_1}}
+      - Image URL 2: {{context_url_2}}
+      - Image URL 3: {{context_url_3}}
 
       [Instructions]
-      1. Start with a hook and immediately insert the `<!--more-->` tag on a new line.
-      2. Following the 'Selective Formatting (Variety)' rule, insert only 1 or 2 appropriate formatting elements that best fit the topic.
-      3. Output ONLY the markdown body. Do NOT include front-matter (---), titles, or greetings.
-      4. Image insertion: ![{{mainKeyword}} related insight image]({{context_url}})
+      1. Start with a punchy hook and immediately insert the `<!--more-->` tag.
+      2. Place 1-3 images from the provided URLs using the 'Contextual Image Alt' strategy throughout the body.
+      3. Output ONLY the markdown body. No front-matter, titles, or intro greetings.
 
-      Start writing the post body now.
+      Start writing now.

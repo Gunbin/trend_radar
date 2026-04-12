@@ -85,13 +85,18 @@ async function getPixabayImage(keyword, type = 'all') {
 async function getOpenverseImage(keyword) {
   try {
     const res = await axios.get(`https://api.openverse.org/v1/images/`, {
-      params: { q: keyword, page_size: 5 },
+      params: { 
+        q: keyword, 
+        categories: 'illustration', // Strictly cartoons/illustrations
+        extension: 'jpg,png',       // Only common web formats
+        page_size: 5 
+      },
       headers: { 'User-Agent': 'TrendRadar/1.0' }
     });
     if (res.data.results && res.data.results.length > 0) {
       const randomIndex = Math.floor(Math.random() * res.data.results.length);
-      // Openverse URLs vary, so we just take the result URL
-      return res.data.results[randomIndex].url;
+      // Use "thumbnail" instead of "url" because it is proxied and hotlink-friendly
+      return res.data.results[randomIndex].thumbnail;
     }
   } catch (error) {
     console.error('Openverse API Error:', error.message);
@@ -101,45 +106,35 @@ async function getOpenverseImage(keyword) {
 
 // --- Master Image Dispatcher ---
 async function getRandomImage(keyword, isThumbnail = false) {
-  // If the keyword looks like an array (passed from postPlan.imageSearchKeywords), pick one
   let searchQuery = keyword;
   if (Array.isArray(keyword)) {
-    // Pick a random keyword from the provided list for variety
     searchQuery = keyword[Math.floor(Math.random() * keyword.length)];
   }
 
-  console.log(`[Image Search] Query: ${searchQuery} (${isThumbnail ? 'Thumbnail' : 'Body'})`);
+  console.log(`[Cartoon Image Search] Query: ${searchQuery} (${isThumbnail ? 'Thumbnail' : 'Body'})`);
 
   let imageUrl = null;
   
-  // Define sources
-  const thumbnailSources = [
+  // Mixed sources for maximum variety and reliability
+  const sources = [
     () => getPixabayImage(searchQuery, 'illustration'),
     () => getPixabayImage(searchQuery, 'vector'),
-    () => getOpenverseImage(searchQuery + " illustration")
-  ];
-
-  const bodySources = [
-    () => getPexelsImage(searchQuery),
-    () => getPixabayImage(searchQuery, 'photo'),
-    () => getPixabayImage(searchQuery, 'illustration'),
     () => getOpenverseImage(searchQuery)
   ];
 
-  const targetSources = isThumbnail ? thumbnailSources : bodySources;
-  const shuffledSources = targetSources.sort(() => Math.random() - 0.5);
+  const shuffledSources = sources.sort(() => Math.random() - 0.5);
 
   for (const fetcher of shuffledSources) {
     imageUrl = await fetcher();
     if (imageUrl) {
-      console.log(`[Image Found] Source: ${fetcher.toString().match(/get(\w+)Image/)?.[1] || 'Unknown'}`);
+      console.log(`[Illustration Found]`);
       break;
     }
   }
 
-  // Final Fallback: Try Pexels with the query directly if everything fails
+  // Final Fallback: If no illustration found, use a cool abstract pattern
   if (!imageUrl) {
-    imageUrl = await getPexelsImage(searchQuery) || 'https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress&cs=tinysrgb&w=1200';
+    imageUrl = await getPixabayImage('abstract pattern', 'vector') || 'https://cdn.pixabay.com/photo/2017/01/30/02/20/background-2019894_960_720.png';
   }
 
   return imageUrl;

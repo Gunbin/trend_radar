@@ -45,14 +45,13 @@ class PromptManager {
             finalPrompt += `[Format]\n${task.format_rules}\n\n`;
         }
 
-        // 2. 템플릿 변수 치환
-        let templateContent = task.template;
+        finalPrompt += `[Content]\n${task.template}`;
+
+        // 2. 전체 프롬프트에서 템플릿 변수 치환 (중요: template뿐만 아니라 rules 등 전체 적용)
         Object.keys(data).forEach(key => {
             const regex = new RegExp(`{{${key}}}`, 'g');
-            templateContent = templateContent.replace(regex, data[key]);
+            finalPrompt = finalPrompt.replace(regex, data[key]);
         });
-
-        finalPrompt += `[Content]\n${templateContent}`;
 
         return finalPrompt;
     }

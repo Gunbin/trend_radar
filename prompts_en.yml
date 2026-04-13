@@ -56,7 +56,7 @@ tasks:
       - "Hook: Address the reader's anxiety ({{searchIntent}}). Start strong with something like 'Let's be real. Everyone says this is great, right?' as if sitting them down for a serious talk, then immediately insert the `<!--more-->` tag."
       - "Fact Bomb: Utilize the {{coreFact}} mid-post. Say something like 'I dug through the numbers, and look at this' to shatter misconceptions."
       - "Blockquote: Insert one quote block formatted as `> ⚠️ Honestly, Watch Out For This:`."
-      - "Image Placement: Place 1 to 3 images naturally within the body using `![{{mainKeyword}} related image]({{context_url}})`."
+      - "Image Placement: Insert 1 to 3 provided image URLs naturally within the body. However, DO NOT use the same Alt text (`![write here]`) for all images. Avoid specific visual descriptions (e.g., blue chart). Instead, write different 'descriptive phrases' that include the subtopic of the paragraph or the {{mainKeyword}}. (e.g., `![Reference photo to help understand concepts related to {{mainKeyword}}]`, `![Example image showing a common everyday problem]`)"
       - "Forbidden AI Phrases: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'In today's fast-paced world', 'Hope this helps', 'Furthermore', 'Moreover', 'Finally']"
       - "Finale: No conclusion section. The final H2 must be '💡 Fact-Check Q&A Between Us' with 2 practical questions and answers."
     template: |
@@ -85,7 +85,7 @@ tasks:
       - "Hook: Provide relief immediately. E.g., 'Is this giving you a headache? I've organized everything, just look at this.' Insert the `<!--more-->` tag right after."
       - "Friendly Explanations: Use analogies for complex parts. Use bullet points (-) for long texts. Put the {{coreFact}} in the intro for motivation."
       - "Blockquote: Insert one quote block formatted as `> 📝 If It's Too Complex, Just Remember This:`."
-      - "Image Placement: Place 1 to 3 images naturally within the body using `![{{mainKeyword}} related image]({{context_url}})`."
+      - "Image Placement: Insert 1 to 3 provided image URLs naturally within the body. However, DO NOT use the same Alt text (`![write here]`) for all images. Avoid specific visual descriptions (e.g., blue chart). Instead, write different 'descriptive phrases' that include the subtopic of the paragraph or the {{mainKeyword}}. (e.g., `![Reference photo to help understand concepts related to {{mainKeyword}}]`, `![Example image showing a common everyday problem]`)"
       - "Forbidden AI Phrases: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'In today's fast-paced world', 'Hope this helps', 'Furthermore', 'Moreover', 'Finally']"
       - "Finale: No conclusion section. The final H2 must be '💡 Frequently Confused Questions' with 2 Q&As."
     template: |
@@ -114,7 +114,7 @@ tasks:
       - "Hook: Start refreshingly. 'Been stressing over this for days? Stop wasting time. I'll decide for you right now.' Insert the `<!--more-->` tag right after."
       - "Cold Balance: Don't just praise. Clearly divide pros and cons. Use the {{coreFact}} to persuade them, saying 'The data shows this'."
       - "Blockquote: Insert one quote block formatted as `> 🎯 Stop Stressing, Here is the Answer:` to settle the debate."
-      - "Image Placement: Place 1 to 3 images naturally within the body using `![{{mainKeyword}} related image]({{context_url}})`."
+      - "Image Placement: Insert 1 to 3 provided image URLs naturally within the body. However, DO NOT use the same Alt text (`![write here]`) for all images. Avoid specific visual descriptions (e.g., blue chart). Instead, write different 'descriptive phrases' that include the subtopic of the paragraph or the {{mainKeyword}}. (e.g., `![Reference photo to help understand concepts related to {{mainKeyword}}]`, `![Example image showing a common everyday problem]`)"
       - "Forbidden AI Phrases: ['In summary', 'In conclusion', 'Let's dive in', 'It is no exaggeration', 'In today's fast-paced world', 'Hope this helps', 'Furthermore', 'Moreover', 'Finally']"
       - "Finale: No conclusion section. The final H2 must be '💡 Last Check Q&A Before You Decide' with 2 Q&As."
     template: |

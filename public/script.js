@@ -414,7 +414,7 @@ document.getElementById('publish-post').addEventListener('click', async () => {
     if (!currentGeneratedMarkdown) return;
     const btn = document.getElementById('publish-post');
     const originalText = btn.textContent;
-    btn.textContent = 'PUBLISHING...';
+    btn.textContent = 'SAVING...';
     btn.disabled = true;
     
     try {
@@ -428,13 +428,44 @@ document.getElementById('publish-post').addEventListener('click', async () => {
         });
         const result = await res.json();
         if (res.ok) {
-            alert('SUCCESSFULLY PUBLISHED TO HUGO!\nFile: ' + result.filePath);
+            alert('SUCCESSFULLY SAVED LOCALLY!\nFile: ' + result.filePath);
             document.getElementById('post-modal').classList.add('hidden');
         } else {
-            alert('PUBLISH FAILED: ' + result.error);
+            alert('SAVE FAILED: ' + result.error);
         }
     } catch (error) {
-        alert('PUBLISH ERROR.');
+        alert('SAVE ERROR.');
+    }
+    
+    btn.textContent = originalText;
+    btn.disabled = false;
+});
+
+document.getElementById('push-github-post').addEventListener('click', async () => {
+    if (!currentGeneratedMarkdown) return;
+    const btn = document.getElementById('push-github-post');
+    const originalText = btn.textContent;
+    btn.textContent = 'PUSHING...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/push-github', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                markdown: currentGeneratedMarkdown,
+                region: APP_CONFIG.region || 'KR'
+            })
+        });
+        const result = await res.json();
+        if (res.ok) {
+            alert('SUCCESSFULLY PUSHED TO GITHUB!\nFile: ' + result.filePath);
+            document.getElementById('post-modal').classList.add('hidden');
+        } else {
+            alert('GITHUB PUSH FAILED: ' + result.error + (result.details ? '\n' + result.details : ''));
+        }
+    } catch (error) {
+        alert('GITHUB PUSH ERROR.');
     }
     
     btn.textContent = originalText;

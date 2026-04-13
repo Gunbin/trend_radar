@@ -10,6 +10,10 @@ import promptManager from './PromptManager.js';
 import fs from 'fs';
 import path from 'path';
 import logger from './logger.js';
+import { exec } from 'child_process';
+import util from 'util';
+
+const execPromise = util.promisify(exec);
 
 const app = express();
 app.use(cors());
@@ -460,6 +464,52 @@ app.post('/api/publish', (req, res) => {
   } catch (error) {
       logger.error("[Publish Error]", error.message);
       res.status(500).json({ error: 'Failed to write markdown file to Hugo' });
+  }
+});
+
+app.post('/api/push-github', async (req, res) => {
+  const { markdown, region = 'KR' } = req.body;
+  if (!markdown) return res.status(400).json({ error: 'Markdown content missing' });
+  
+  if (!process.env.GITHUB_TOKEN) {
+      logger.error("[GitHub Push Error]", "GITHUB_TOKEN is not defined in .env");
+      return res.status(500).json({ error: 'GITHUB_TOKEN is missing in server environment.' });
+  }
+
+  const lang = region === 'US' ? 'en' : 'ko';
+  const timestamp = Date.now();
+  const filename = `trend-${timestamp}.md`;
+  const repoOwner = 'Gunbin';
+  const repoName = 'gunbin.github.io';
+  // GitHub API requires the exact file path inside the repository
+  const githubFilePath = `content/${lang}/blog/${filename}`;
+  const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${githubFilePath}`;
+  
+  try {
+      logger.process(`[GitHub Push] Pushing directly to GitHub via REST API...`);
+      
+      // Base64 encode the markdown content
+      const base64Content = Buffer.from(markdown, 'utf8').toString('base64');
+      
+      const response = await axios.put(apiUrl, {
+          message: `Auto-post: Add trend content ${filename}`,
+          content: base64Content,
+          branch: 'main' // Change this if your default branch is 'master'
+      }, {
+          headers: {
+              'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json'
+          }
+      });
+
+      logger.success(`[GitHub Push] Successfully pushed to GitHub: ${response.data.content.html_url}`);
+      res.json({ success: true, filePath: githubFilePath, url: response.data.content.html_url });
+  } catch (error) {
+      logger.error("[GitHub Push Error]", error.response?.data?.message || error.message);
+      res.status(500).json({ 
+          error: 'Failed to push to GitHub directly', 
+          details: error.response?.data?.message || error.message 
+      });
   }
 });
 

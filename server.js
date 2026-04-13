@@ -94,7 +94,7 @@ async function getOpenverseImage(keyword) {
     const res = await axios.get(`https://api.openverse.org/v1/images/`, {
       params: { 
         q: keyword, 
-        categories: 'illustration', // Strictly cartoons/illustrations
+        categories: 'illustration,digitized_artwork', // Cartoons, illustrations, and digital art
         extension: 'jpg,png',       // Only common web formats
         page_size: 5 
       },
@@ -122,29 +122,49 @@ async function getRandomImage(keyword, isThumbnail = false) {
 
   let imageUrl = null;
   
-  // Mixed sources for maximum variety and reliability
-  const sources = [
+  // 1순위: 카툰풍/일러스트 이미지 (Pixabay, Openverse)
+  const primarySources = [
     () => getPixabayImage(searchQuery, 'illustration'),
     () => getPixabayImage(searchQuery, 'vector'),
     () => getOpenverseImage(searchQuery)
   ];
 
-  const shuffledSources = sources.sort(() => Math.random() - 0.5);
+  const shuffledPrimary = primarySources.sort(() => Math.random() - 0.5);
 
-  for (const fetcher of shuffledSources) {
+  for (const fetcher of shuffledPrimary) {
     imageUrl = await fetcher();
     if (imageUrl) {
       logger.success(`[Illustration Found] for "${searchQuery}"`);
-      break;
+      return imageUrl;
     }
   }
 
-  // Final Fallback: If no illustration found, use a cool abstract pattern
-  if (!imageUrl) {
-    imageUrl = await getPixabayImage('abstract pattern', 'vector') || 'https://cdn.pixabay.com/photo/2017/01/30/02/20/background-2019894_960_720.png';
+  // 2순위 폴백: 일러스트를 찾지 못했을 때 Pexels 실사 이미지 사용
+  logger.warn(`[Image Search] No illustration found for "${searchQuery}". Trying Pexels (Photo)...`);
+  imageUrl = await getPexelsImage(searchQuery);
+  if (imageUrl) {
+      logger.success(`[Photo Found] Pexels fallback successful for "${searchQuery}"`);
+      return imageUrl;
   }
 
-  return imageUrl;
+  // 3순위 폴백: 특정 키워드로 모든 API 실패 시, 범용적인 추상 배경(일러스트) 검색
+  logger.warn(`[Image Search] No specific image found. Trying generic illustration fallback...`);
+  const fallbackSources = [
+    () => getPixabayImage('abstract pattern', 'vector'),
+    () => getOpenverseImage('abstract')
+  ];
+
+  for (const fetcher of fallbackSources.sort(() => Math.random() - 0.5)) {
+    imageUrl = await fetcher();
+    if (imageUrl) {
+      logger.success(`[Image Found] Generic illustration fallback retrieved successfully.`);
+      return imageUrl;
+    }
+  }
+
+  // Final Fallback: 모든 API 실패 (Rate Limit, Network Error 등) 시 사용할 최후의 하드코딩 URL
+  logger.error(`[Image Search] All API fetchers failed. Using hardcoded fallback URL.`);
+  return 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=640&q=80';
 }
 
 // 1. Google Trends (다국어 지원)

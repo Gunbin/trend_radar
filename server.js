@@ -28,6 +28,67 @@ app.use((req, res, next) => {
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// --- Dynamic Model Fetcher ---
+let cachedModels = null;
+async function getBestModels() {
+    if (cachedModels) return cachedModels;
+
+    try {
+        const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
+        
+        let models = response.data.models
+            .map(m => m.name.replace('models/', ''))
+            // 텍스트/채팅을 지원하는 모델만 필터링 (음성, 임베딩, 이미지, 특정 목적 모델 제외)
+            .filter(name => name.startsWith('gemini') || name.startsWith('gemma'))
+            .filter(name => !name.includes('tts') && !name.includes('embedding') && !name.includes('audio') && 
+                            !name.includes('vision') && !name.includes('image') && !name.includes('robotics') && 
+                            !name.includes('computer-use') && !name.includes('research'));
+
+        // 똑똑한 순서(지능 및 버전)로 정렬하기 위한 휴리스틱 스코어링
+        const getScore = (name) => {
+            let score = 0;
+            
+            // 1. 모델 등급 (Pro > Flash > Gemma)
+            if (name.includes('pro')) score += 1000;
+            else if (name.includes('flash')) score += 500;
+            else if (name.includes('gemma')) score += 100;
+            
+            // Lite는 동일 등급에서 약간 감점
+            if (name.includes('lite')) score -= 50;
+            
+            // 2. 버전 넘버링 (예: 3.1, 3.0, 2.5, 2.0) - 높을수록 가점
+            const vMatch = name.match(/(\d+\.\d+|\d+)/);
+            if (vMatch) {
+                score += parseFloat(vMatch[1]) * 10;
+            }
+            
+            // 3. 안정성 (latest 우대, preview 약간 감점)
+            if (name.includes('latest')) score += 5;
+            if (name.includes('preview')) score -= 2;
+
+            return score;
+        };
+
+        // 점수 내림차순(가장 똑똑한 모델이 0번 인덱스) 정렬
+        models.sort((a, b) => getScore(b) - getScore(a));
+        
+        // 너무 많은 모델을 시도할 필요는 없으므로 상위 10개만 유지
+        cachedModels = models.slice(0, 10);
+        logger.info(`[System] Dynamically loaded ${cachedModels.length} models. Highest intelligence: ${cachedModels[0]}`);
+        return cachedModels;
+
+    } catch (error) {
+        logger.error("[System] Failed to fetch models dynamically. Using reliable fallback list.");
+        return [
+            "gemini-3.1-pro-preview",
+            "gemini-3-pro-preview",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash"
+        ];
+    }
+}
+
 // --- Translation Helper (For better image search) ---
 async function translateToEnglish(keyword) {
   if (!keyword || keyword.trim() === '') return 'abstract';
@@ -305,15 +366,7 @@ app.post('/api/analyze', async (req, res) => {
   const topicCount = config?.topicCount || 3;
   const lang = region === 'US' ? 'en' : 'ko';
 
-  const modelsToTry = [
-    "gemini-3.1-pro",                     // UI: Gemini 3.1 Pro (최상위 지능)
-    "gemini-2.5-pro",                     // UI: Gemini 2.5 Pro
-    "gemini-3-flash",                     // UI: Gemini 3 Flash
-    "gemini-2.5-flash",                   // UI: Gemini 2.5 Flash
-    "gemini-2.0-flash",                   // UI: Gemini 2 Flash
-    "gemini-3.1-flash-lite",              // UI: Gemini 3.1 Flash Lite (500회 한도)
-    "gemini-2.5-flash-lite"               // UI: Gemini 2.5 Flash Lite
-  ];
+  const modelsToTry = await getBestModels();
   let lastError = null;
 
   for (let i = 0; i < modelsToTry.length; i++) {
@@ -341,10 +394,7 @@ app.post('/api/analyze', async (req, res) => {
       return res.json(JSON.parse(text));
     } catch (error) {
       lastError = error;
-      logger.warn(`[Analysis] Failed with ${modelName}: ${error.message}. Retrying...`);
-      if (i < modelsToTry.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      }
+      logger.warn(`[Analysis] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
       continue;
     }
   }
@@ -388,15 +438,7 @@ thumbnail: "${thumbnailUrl}"
 
 `;
 
-  const modelsToTry = [
-    "gemini-3.1-pro",                     // UI: Gemini 3.1 Pro (최상위 지능)
-    "gemini-2.5-pro",                     // UI: Gemini 2.5 Pro
-    "gemini-3-flash",                     // UI: Gemini 3 Flash
-    "gemini-2.5-flash",                   // UI: Gemini 2.5 Flash
-    "gemini-2.0-flash",                   // UI: Gemini 2 Flash
-    "gemini-3.1-flash-lite",              // UI: Gemini 3.1 Flash Lite (500회 한도)
-    "gemini-2.5-flash-lite"               // UI: Gemini 2.5 Flash Lite
-  ];
+  const modelsToTry = await getBestModels();
   
   let lastError = null;
 
@@ -432,10 +474,7 @@ thumbnail: "${thumbnailUrl}"
       return res.json({ markdown: hugoHeader + bodyMarkdown });
     } catch (error) {
       lastError = error;
-      logger.warn(`[Post Gen] Failed with ${modelName}: ${error.message}. Retrying...`);
-      if (i < modelsToTry.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      }
+      logger.warn(`[Post Gen] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
       continue;
     }
   }

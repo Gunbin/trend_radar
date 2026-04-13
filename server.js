@@ -448,9 +448,14 @@ thumbnail: "${thumbnailUrl}"
       logger.process(`[Post Gen] Generating content with ${modelName} (Region: ${region})`);
       const model = genAI.getGenerativeModel({ model: modelName });
       
-      const prompt = promptManager.getPrompt('post_writing', lang, {
+      const angle = postPlan.angleType || 'guide';
+      const promptKey = `post_writing_${angle}`;
+
+      const prompt = promptManager.getPrompt(promptKey, lang, {
         mainKeyword: postPlan.mainKeyword,
         searchIntent: postPlan.searchIntent,
+        coreFact: postPlan.coreFact || '최신 트렌드 데이터',
+        subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
         seoKeywords: tags.join(', '),
         lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
         coreMessage: postPlan.coreMessage,

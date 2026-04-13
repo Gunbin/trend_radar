@@ -9,11 +9,18 @@ import 'dotenv/config';
 import promptManager from './PromptManager.js';
 import fs from 'fs';
 import path from 'path';
+import logger from './logger.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json()); 
 app.use(express.static('public'));
+
+// Request Logger
+app.use((req, res, next) => {
+    logger.api(`${req.method} ${req.originalUrl}`);
+    next();
+});
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -28,7 +35,7 @@ async function translateToEnglish(keyword) {
     let translated = response.text().trim().replace(/["'.]/g, '');
     return translated || keyword; 
   } catch (error) {
-    console.error('Translation Error:', error.message);
+    logger.error('Translation Error', error.message);
     return keyword; 
   }
 }
@@ -46,7 +53,7 @@ async function getPexelsImage(keyword) {
       return res.data.photos[randomIndex].src.landscape;
     }
   } catch (error) {
-    console.error('Pexels API Error:', error.message);
+    logger.error('Pexels API Error', error.message);
   }
   return null;
 }
@@ -76,7 +83,7 @@ async function getPixabayImage(keyword, type = 'all') {
       return await getPixabayImage(simplified, type);
     }
   } catch (error) {
-    console.error('Pixabay API Error:', error.message);
+    logger.error('Pixabay API Error', error.message);
   }
   return null;
 }
@@ -99,7 +106,7 @@ async function getOpenverseImage(keyword) {
       return res.data.results[randomIndex].thumbnail;
     }
   } catch (error) {
-    console.error('Openverse API Error:', error.message);
+    logger.error('Openverse API Error', error.message);
   }
   return null;
 }
@@ -111,7 +118,7 @@ async function getRandomImage(keyword, isThumbnail = false) {
     searchQuery = keyword[Math.floor(Math.random() * keyword.length)];
   }
 
-  console.log(`[Cartoon Image Search] Query: ${searchQuery} (${isThumbnail ? 'Thumbnail' : 'Body'})`);
+  logger.process(`[Image Search] Query: ${searchQuery} (${isThumbnail ? 'Thumbnail' : 'Body'})`);
 
   let imageUrl = null;
   
@@ -127,7 +134,7 @@ async function getRandomImage(keyword, isThumbnail = false) {
   for (const fetcher of shuffledSources) {
     imageUrl = await fetcher();
     if (imageUrl) {
-      console.log(`[Illustration Found]`);
+      logger.success(`[Illustration Found] for "${searchQuery}"`);
       break;
     }
   }
@@ -217,7 +224,7 @@ async function getRedditTrends() {
       subreddit: child.data.subreddit
     }));
   } catch (error) {
-    console.error('Reddit API Error:', error.message);
+    logger.error('Reddit API Error', error.message);
     return [];
   }
 }
@@ -239,7 +246,7 @@ async function getYahooNewsRSS() {
       pubDate: item.pubDate ? item.pubDate[0] : ''
     }));
   } catch (error) {
-      console.error('Yahoo News API Error:', error.message);
+      logger.error('Yahoo News API Error', error.message);
       return []; 
   }
 }
@@ -288,7 +295,7 @@ app.post('/api/analyze', async (req, res) => {
   for (let i = 0; i < modelsToTry.length; i++) {
     const modelName = modelsToTry[i];
     try {
-      console.log(`Attempting Viral Analysis: ${modelName} (Count: ${topicCount}, Region: ${region})`);
+      logger.process(`[Analysis] Attempting with ${modelName} (Count: ${topicCount}, Region: ${region})`);
       const model = genAI.getGenerativeModel({ model: modelName });
       const prompt = promptManager.getPrompt('trend_analysis', lang, {
         trends_data: JSON.stringify(trends),
@@ -306,16 +313,18 @@ app.post('/api/analyze', async (req, res) => {
         text = text.slice(firstBrace, lastBrace + 1);
       }
       
+      logger.success(`[Analysis] Successful with ${modelName}`);
       return res.json(JSON.parse(text));
     } catch (error) {
       lastError = error;
-      console.error(`Error with ${modelName}:`, error.message);
+      logger.warn(`[Analysis] Failed with ${modelName}: ${error.message}. Retrying...`);
       if (i < modelsToTry.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 2500));
       }
       continue;
     }
   }
+  logger.error(`[Analysis] All models failed`, lastError?.message);
   res.status(500).json({ error: 'AI 분석 실패', details: lastError?.message });
 });
 
@@ -324,6 +333,7 @@ app.post('/api/generate-post', async (req, res) => {
   const lang = region === 'US' ? 'en' : 'ko';
   
   // Fetch thumbnail and 3 different context images using the Master Dispatcher
+  logger.process(`[Post Gen] Fetching images for: ${postPlan.mainKeyword}`);
   const [thumbnailUrl, contextUrl1, contextUrl2, contextUrl3] = await Promise.all([
     getRandomImage(postPlan.mainKeyword, true), // Thumbnail (Illustration/Cartoon)
     getRandomImage(postPlan.seoKeywords?.[0] || postPlan.mainKeyword, false), // Body 1
@@ -364,10 +374,12 @@ thumbnail: "${thumbnailUrl}"
     "gemini-2.5-flash-lite"               // UI: Gemini 2.5 Flash Lite
   ];
   
+  let lastError = null;
+
   for (let i = 0; i < modelsToTry.length; i++) {
     const modelName = modelsToTry[i];
     try {
-      console.log(`Generating Viral Post Body: ${modelName} (Region: ${region})`);
+      logger.process(`[Post Gen] Generating content with ${modelName} (Region: ${region})`);
       const model = genAI.getGenerativeModel({ model: modelName });
       
       const prompt = promptManager.getPrompt('post_writing', lang, {
@@ -392,15 +404,18 @@ thumbnail: "${thumbnailUrl}"
           }
       }
 
+      logger.success(`[Post Gen] Successful with ${modelName}`);
       return res.json({ markdown: hugoHeader + bodyMarkdown });
     } catch (error) {
-      console.error(`Error with ${modelName}:`, error.message);
+      lastError = error;
+      logger.warn(`[Post Gen] Failed with ${modelName}: ${error.message}. Retrying...`);
       if (i < modelsToTry.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 2500));
       }
       continue;
     }
   }
+  logger.error(`[Post Gen] All models failed`, lastError?.message);
   res.status(500).json({ error: '본문 생성 실패' });
 });
 
@@ -420,14 +435,15 @@ app.post('/api/publish', (req, res) => {
           fs.mkdirSync(targetDir, { recursive: true });
       }
       fs.writeFileSync(filePath, markdown, 'utf8');
+      logger.success(`[Publish] Saved markdown file to ${filePath}`);
       res.json({ success: true, filePath: `/content/${lang}/blog/${filename}` });
   } catch (error) {
-      console.error("Publish Error:", error);
+      logger.error("[Publish Error]", error.message);
       res.status(500).json({ error: 'Failed to write markdown file to Hugo' });
   }
 });
 
 const PORT = 3000;
 app.listen(PORT, () => {
-  console.log(`TrendRadar v2.0 running at http://localhost:${PORT}`);
+  logger.success(`TrendRadar v2.0 running at http://localhost:${PORT}`);
 });

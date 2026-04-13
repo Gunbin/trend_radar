@@ -1,5 +1,6 @@
 import fs from 'fs';
 import YAML from 'yaml';
+import logger from './logger.js';
 
 class PromptManager {
     constructor() {
@@ -15,13 +16,13 @@ class PromptManager {
                 const file = fs.readFileSync(filePath, 'utf8');
                 const config = YAML.parse(file);
                 this.prompts[lang] = config.tasks;
-                console.log(`✅ Prompt configuration (${lang}) loaded successfully.`);
+                logger.success(`Prompt configuration (${lang}) loaded successfully.`);
             } else {
-                console.warn(`⚠️ Prompt file not found: ${filePath}`);
+                logger.warn(`Prompt file not found: ${filePath}`);
                 this.prompts[lang] = {};
             }
         } catch (error) {
-            console.error(`❌ Failed to load ${filePath}:`, error.message);
+            logger.error(`Failed to load ${filePath}:`, error.message);
         }
     }
 

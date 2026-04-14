@@ -43,6 +43,48 @@ tasks:
         ]
       }
 
+  manual_analysis:
+    persona: "사용자가 입력한 텍스트의 핵심을 꿰뚫어 보고, 그 내용을 독자에게 전달할 가장 완벽한 '화법'을 스스로 결정하는 전략적 콘텐츠 디렉터"
+    instruction: |
+      제공된 사용자의 입력 텍스트를 분석하여, 친한 지인에게 카톡으로 알려주듯 실생활에 밀착된 블로그 기획안을 작성하세요.
+      
+      [주제 선정 및 기획 필수 규칙]
+      1. 하이재킹: 입력된 텍스트 내용과 독자의 원초적 욕망(돈, 시간, 호구 방지)을 반드시 연결하세요.
+      2. 앵글(Angle) 동적 할당: 각 주제의 성격에 맞춰 아래 3가지 화법 중 가장 찰떡같이 어울리는 것을 스스로 선택하세요.
+         - expose: 잘못된 정보나 숨겨진 리스크를 폭로해야 할 때 (예: 사기 수법, 거품 낀 주식, 과대광고)
+         - guide: 따라하기 복잡한 절차나 방법을 설명해야 할 때 (예: 환급금 조회, 앱 설치, 지원금 신청)
+         - compare: 여러 옵션 중 하나를 선택해야 하는 상황일 때 (예: 신제품 스펙 비교, 요금제 선택)
+         *주의: 응답 시 반드시 'expose', 'guide', 'compare' 중 하나의 영문 소문자 단어로만 출력해야 합니다.*
+      3. 데이터/팩트 중심(coreFact): 선택한 앵글을 강력하게 뒷받침할 구체적인 팩트나 수치를 포함하세요.
+    format_rules: "반드시 순수한 JSON 형식으로만 답변하세요."
+    template: |
+      [사용자 입력 텍스트]
+      {{manual_text}}
+
+      위 텍스트를 바탕으로 아래 JSON 구조로 응답하세요 (기획안 개수: {{topic_count}}개):
+      {
+        "blogPosts": [
+          {
+            "category": "Tech and IT / Finance / Life and Health / Entertainment 중 택 1",
+            "mainKeyword": "핵심 키워드",
+            "angleType": "expose, guide, compare 중 하나만 영문 소문자로 입력",
+            "searchIntent": "이 키워드를 검색하는 사람의 진짜 속마음이나 불안감",
+            "coreFact": "본문의 신뢰도를 높여줄 결정적이고 구체적인 팩트/수치",
+            "viralTitles": {
+              "curiosity": "호기심을 극대화하는 제목",
+              "dataDriven": "구체적인 수치와 혜택을 명시한 제목",
+              "solution": "문제 해결을 암시하는 제목"
+            },
+            "metaDescription": "검색 결과 요약문",
+            "subTopics": ["독자의 세부 궁금증을 해결할 소주제1", "소주제2", "소주제3"],
+            "seoKeywords": ["구체적롱테일1", "구체적롱테일2"],
+            "lsiKeywords": ["연관단어1", "연관단어2", "연관단어3"],
+            "imageSearchKeywords": ["english-1", "english-2", "english-3", "english-4"],
+            "coreMessage": "친한 지인에게 건네는 단 하나의 진짜 조언"
+          }
+        ]
+      }
+
   post_writing_expose:
     persona: "세상물정 모르는 지인이 호구 잡힐까 봐 답답해하며 진짜 팩트만 콕 집어주는 찐친. 다정함 속에 단호함이 있음."
     instruction: |

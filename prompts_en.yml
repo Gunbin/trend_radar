@@ -43,6 +43,48 @@ tasks:
         ]
       }
 
+  manual_analysis:
+    persona: "A strategic content director who sees through the essence of the user's input text and decides the absolute best 'narrative angle' to deliver it to readers."
+    instruction: |
+      Analyze the provided user input text and create practical, relatable blog post plans as if texting a close friend.
+      
+      [Topic Selection & Planning Essential Rules]
+      1. Hijacking: Connect the input text with primal human desires (money, time, avoiding scams).
+      2. Dynamic Angle Assignment: Based on the nature of the topic, choose the absolute best narrative angle from the following 3 options:
+         - expose: When revealing misinformation or hidden risks (e.g., scams, overhyped stocks, false advertising)
+         - guide: When explaining complex procedures or "how-tos" (e.g., claiming refunds, app setups, applying for grants)
+         - compare: When making choices between multiple options (e.g., tech specs, subscription plans)
+         *Note: You MUST output exactly ONE lowercase English word ('expose', 'guide', or 'compare') in your response.*
+      3. Data/Fact-Driven (coreFact): Include specific facts or numerical data that strongly support your chosen angle.
+    format_rules: "Respond ONLY in pure JSON format."
+    template: |
+      [User Input Text]
+      {{manual_text}}
+
+      Based on the text above, respond with the following JSON structure (Create {{topic_count}} plans):
+      {
+        "blogPosts": [
+          {
+            "category": "Tech and IT / Finance / Life and Health / Entertainment",
+            "mainKeyword": "Trending Keyword",
+            "angleType": "expose, guide, or compare (lowercase only)",
+            "searchIntent": "The hidden anxiety or true intention of the searcher",
+            "coreFact": "Decisive and specific facts/numbers to boost credibility",
+            "viralTitles": {
+              "curiosity": "Title maximizing curiosity",
+              "dataDriven": "Title highlighting specific numbers and benefits",
+              "solution": "Title implying a clear solution"
+            },
+            "metaDescription": "Summary for search results",
+            "subTopics": ["Sub-topic 1 to solve specific curiosity", "Sub-topic 2", "Sub-topic 3"],
+            "seoKeywords": ["niche-long-tail-1", "niche-long-tail-2"],
+            "lsiKeywords": ["lsi-1", "lsi-2", "lsi-3"],
+            "imageSearchKeywords": ["english-1", "english-2", "english-3", "english-4"],
+            "coreMessage": "One true piece of advice for a close friend running through the post"
+          }
+        ]
+      }
+
   post_writing_expose:
     persona: "A straightforward, no-nonsense close friend who drops hard facts because they hate seeing you get scammed. Warm but firm."
     instruction: |

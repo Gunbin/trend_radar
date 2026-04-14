@@ -305,6 +305,49 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     }
 });
 
+// Manual Input Logic
+document.getElementById('manual-btn').addEventListener('click', () => {
+    document.getElementById('manual-modal').classList.remove('hidden');
+    document.getElementById('manual-text').value = '';
+});
+
+document.getElementById('close-manual').addEventListener('click', () => {
+    document.getElementById('manual-modal').classList.add('hidden');
+});
+
+document.getElementById('manual-analyze-btn').addEventListener('click', async () => {
+    const manualText = document.getElementById('manual-text').value.trim();
+    if (!manualText) {
+        alert("PLEASE ENTER TEXT FOR ANALYSIS.");
+        return;
+    }
+    
+    document.getElementById('manual-modal').classList.add('hidden');
+    
+    const aiSection = document.getElementById('ai-section');
+    const aiContent = document.getElementById('ai-content');
+    
+    aiSection.classList.remove('hidden');
+    aiContent.innerHTML = '<div class="ai-loading">CONNECTING TO GEMINI NEURAL NET... [PROCESSING MANUAL INPUT]</div>';
+    
+    try {
+        const res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                manualText: manualText,
+                config: { topicCount: APP_CONFIG.topicCount },
+                region: APP_CONFIG.region || 'KR'
+            })
+        });
+        
+        const result = await res.json();
+        renderAIAnalysis(result);
+    } catch (error) {
+        aiContent.innerHTML = '<div class="error">AI ANALYSIS FAILED. CHECK API KEY AND SERVER LOGS.</div>';
+    }
+});
+
 document.getElementById('close-ai').addEventListener('click', () => {
     document.getElementById('ai-section').classList.add('hidden');
 });

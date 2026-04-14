@@ -362,7 +362,7 @@ app.get('/api/trends', async (req, res) => {
 });
 
 app.post('/api/analyze', async (req, res) => {
-  const { trends, config, region = 'KR' } = req.body; 
+  const { trends, manualText, config, region = 'KR' } = req.body; 
   const topicCount = config?.topicCount || 3;
   const lang = region === 'US' ? 'en' : 'ko';
 
@@ -374,10 +374,19 @@ app.post('/api/analyze', async (req, res) => {
     try {
       logger.process(`[Analysis] Attempting with ${modelName} (Count: ${topicCount}, Region: ${region})`);
       const model = genAI.getGenerativeModel({ model: modelName });
-      const prompt = promptManager.getPrompt('trend_analysis', lang, {
-        trends_data: JSON.stringify(trends),
-        topic_count: topicCount
-      });
+      
+      let prompt;
+      if (manualText) {
+          prompt = promptManager.getPrompt('manual_analysis', lang, {
+            manual_text: manualText,
+            topic_count: topicCount
+          });
+      } else {
+          prompt = promptManager.getPrompt('trend_analysis', lang, {
+            trends_data: JSON.stringify(trends),
+            topic_count: topicCount
+          });
+      }
 
       const result = await model.generateContent(prompt);
       const response = await result.response;

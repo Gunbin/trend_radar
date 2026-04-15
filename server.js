@@ -101,15 +101,26 @@ async function getBestModels() {
 async function translateToEnglish(keyword) {
   if (!keyword || keyword.trim() === '') return 'abstract';
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // 1.5-flash 모델 제거 대비 (최신 2.5-flash 또는 2.0-flash 사용)
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const prompt = `Translate the following Korean blog keyword into a simple, clear English search term for an image database (like Pexels/Pixabay). Output ONLY the English words, no punctuation or extra text. Keyword: "${keyword}"`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
     let translated = response.text().trim().replace(/["'.]/g, '');
     return translated || keyword; 
   } catch (error) {
-    logger.error('Translation Error', error.message);
-    return keyword; 
+    // 만약 2.5-flash 도 에러나면 2.0-flash 로 폴백 시도
+    try {
+      const fallbackModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const prompt = `Translate the following Korean blog keyword into a simple, clear English search term for an image database (like Pexels/Pixabay). Output ONLY the English words, no punctuation or extra text. Keyword: "${keyword}"`;
+      const result = await fallbackModel.generateContent(prompt);
+      const response = await result.response;
+      let translated = response.text().trim().replace(/["'.]/g, '');
+      return translated || keyword;
+    } catch(fallbackError) {
+      logger.error('Translation Error', fallbackError.message);
+      return keyword; 
+    }
   }
 }
 
@@ -204,15 +215,22 @@ async function uploadToCloudinary(url) {
 }
 
 // --- Master Image Dispatcher ---
-async function getRandomImage(keyword, isThumbnail = false) {
-  const rawUrl = await getRawRandomImage(keyword, isThumbnail);
-  return await uploadToCloudinary(rawUrl);
+async function getRandomImage(keyword, isThumbnail = false, skipTranslation = false) {
+  // 포스팅 생성 시에는 원본 CDN URL을 반환하여 Cloudinary 용량을 아낍니다.
+  // 실제 업로드(save local, push to github) 시점에 일괄 변환합니다.
+  const rawUrl = await getRawRandomImage(keyword, isThumbnail, skipTranslation);
+  return rawUrl;
 }
 
-async function getRawRandomImage(keyword, isThumbnail = false) {
+async function getRawRandomImage(keyword, isThumbnail = false, skipTranslation = false) {
   let searchQuery = keyword;
   if (Array.isArray(keyword)) {
     searchQuery = keyword[Math.floor(Math.random() * keyword.length)];
+  }
+  
+  // 번역 추가! (skipTranslation이 true면 건너뜀)
+  if (!skipTranslation) {
+    searchQuery = await translateToEnglish(searchQuery);
   }
 
   logger.process(`[Image Search] Query: ${searchQuery} (${isThumbnail ? 'Thumbnail' : 'Body'})`);
@@ -446,21 +464,99 @@ app.post('/api/analyze', async (req, res) => {
 app.post('/api/generate-post', async (req, res) => {
   const { postPlan, region = 'KR' } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
-  
-  // Fetch thumbnail and 3 different context images using the Master Dispatcher
-  logger.process(`[Post Gen] Fetching images for: ${postPlan.mainKeyword}`);
-  const [thumbnailUrl, contextUrl1, contextUrl2, contextUrl3] = await Promise.all([
-    getRandomImage(postPlan.mainKeyword, true), // Thumbnail (Illustration/Cartoon)
-    getRandomImage(postPlan.seoKeywords?.[0] || postPlan.mainKeyword, false), // Body 1
-    getRandomImage(postPlan.seoKeywords?.[1] || postPlan.lsiKeywords?.[0] || postPlan.mainKeyword, false), // Body 2
-    getRandomImage(postPlan.lsiKeywords?.[1] || 'insight', false) // Body 3
-  ]);
 
-  // Construct Hugo Front-matter in Backend
+  const modelsToTry = await getBestModels();
+  
+  let lastError = null;
+  let bodyMarkdown = '';
+  
+  // 1. 본문 생성 (이미지 URL 없이 먼저 생성)
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const modelName = modelsToTry[i];
+    try {
+      logger.process(`[Post Gen] Generating content with ${modelName} (Region: ${region})`);
+      const model = genAI.getGenerativeModel({ model: modelName });
+      
+      const angle = postPlan.angleType || 'guide';
+      const promptKey = `post_writing_${angle}`;
+
+      const tags = Array.isArray(postPlan.seoKeywords) ? postPlan.seoKeywords : [];
+
+      const prompt = promptManager.getPrompt(promptKey, lang, {
+        mainKeyword: postPlan.mainKeyword,
+        searchIntent: postPlan.searchIntent,
+        coreFact: postPlan.coreFact || '최신 트렌드 데이터',
+        subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
+        seoKeywords: tags.join(', '),
+        lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
+        coreMessage: postPlan.coreMessage,
+        // 이미지 자리에 플레이스홀더 텍스트만 넣도록 유도하거나, 빈 URL 전달
+        context_url_1: "IMAGE_PLACEHOLDER_1",
+        context_url_2: "IMAGE_PLACEHOLDER_2",
+        context_url_3: "IMAGE_PLACEHOLDER_3"
+      });
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      bodyMarkdown = response.text().trim().replace(/^```markdown|```$/g, "").trim();
+      
+      if (bodyMarkdown.startsWith('---')) {
+          const parts = bodyMarkdown.split('---');
+          if (parts.length >= 3) {
+              bodyMarkdown = parts.slice(2).join('---').trim();
+          }
+      }
+
+      logger.success(`[Post Gen] Content generated successfully with ${modelName}`);
+      break; // 성공하면 루프 탈출
+    } catch (error) {
+      lastError = error;
+      logger.warn(`[Post Gen] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
+      continue;
+    }
+  }
+  
+  if (!bodyMarkdown) {
+      logger.error(`[Post Gen] All models failed`, lastError?.message);
+      return res.status(500).json({ error: '본문 생성 실패' });
+  }
+
+  // 2. 썸네일 생성 (title 기반)
   const selectedTitle = postPlan.viralTitles ? 
       (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
       postPlan.viralTitle;
   
+  logger.process(`[Image Fetch] Fetching thumbnail for title: ${selectedTitle}`);
+  const thumbnailUrl = await getRandomImage(selectedTitle, true);
+
+  // 3. 본문 내 이미지 치환 (Alt 텍스트 + 영문 키워드 기반)
+  const bodyImageRegex = /!\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g;
+  const bodyMatches = [...bodyMarkdown.matchAll(bodyImageRegex)];
+  
+  for (const match of bodyMatches) {
+      const fullMatch = match[0];
+      const altText = match[1];
+      const placeholderUrl = match[2];
+      const englishKeyword = match[3];
+
+      // 플레이스홀더 URL을 가지고 있는 이미지만 처리
+      if (placeholderUrl.includes('IMAGE_PLACEHOLDER')) {
+          const searchKeyword = englishKeyword || altText;
+          const skipTranslation = !!englishKeyword; // 영문 키워드가 제공되었다면 번역 생략
+          
+          logger.process(`[Image Fetch] Fetching body image for Keyword: "${searchKeyword}"`);
+          const realImageUrl = await getRandomImage(searchKeyword, false, skipTranslation);
+          
+          if (realImageUrl) {
+              // 치환 시 기존 플레이스홀더 부분을 실제 이미지 URL로 교체하되, Title 속성도 깔끔하게 제거하거나 유지
+              // 여기서는 마크다운 문법을 깔끔하게 유지하기 위해 전체 매치 구문을 통째로 갈아끼웁니다.
+              const replacement = `![${altText}](${realImageUrl})`;
+              bodyMarkdown = bodyMarkdown.replace(fullMatch, replacement);
+          }
+      }
+  }
+
+  // 4. Hugo Front-matter 구성
   let selectedCategory = postPlan.category || "Tech and IT";
   selectedCategory = selectedCategory.replace(/&/g, 'and').replace(/\s+/g, ' ').trim();
   
@@ -479,59 +575,52 @@ thumbnail: "${thumbnailUrl}"
 
 `;
 
-  const modelsToTry = await getBestModels();
-  
-  let lastError = null;
-
-  for (let i = 0; i < modelsToTry.length; i++) {
-    const modelName = modelsToTry[i];
-    try {
-      logger.process(`[Post Gen] Generating content with ${modelName} (Region: ${region})`);
-      const model = genAI.getGenerativeModel({ model: modelName });
-      
-      const angle = postPlan.angleType || 'guide';
-      const promptKey = `post_writing_${angle}`;
-
-      const prompt = promptManager.getPrompt(promptKey, lang, {
-        mainKeyword: postPlan.mainKeyword,
-        searchIntent: postPlan.searchIntent,
-        coreFact: postPlan.coreFact || '최신 트렌드 데이터',
-        subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
-        seoKeywords: tags.join(', '),
-        lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
-        coreMessage: postPlan.coreMessage,
-        context_url_1: contextUrl1,
-        context_url_2: contextUrl2,
-        context_url_3: contextUrl3
-      });
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      let bodyMarkdown = response.text().trim().replace(/^```markdown|```$/g, "").trim();
-      
-      if (bodyMarkdown.startsWith('---')) {
-          const parts = bodyMarkdown.split('---');
-          if (parts.length >= 3) {
-              bodyMarkdown = parts.slice(2).join('---').trim();
-          }
-      }
-
-      logger.success(`[Post Gen] Successful with ${modelName}`);
-      return res.json({ markdown: hugoHeader + bodyMarkdown });
-    } catch (error) {
-      lastError = error;
-      logger.warn(`[Post Gen] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
-      continue;
-    }
-  }
-  logger.error(`[Post Gen] All models failed`, lastError?.message);
-  res.status(500).json({ error: '본문 생성 실패' });
+  return res.json({ markdown: hugoHeader + bodyMarkdown });
 });
 
-app.post('/api/publish', (req, res) => {
-  const { markdown, region = 'KR' } = req.body;
+async function processMarkdownImagesToCloudinary(markdown) {
+  let processedMarkdown = markdown;
+  
+  // 1. 썸네일 URL 매칭 (프론트매터의 thumbnail: "URL")
+  const thumbnailRegex = /thumbnail:\s*"(https?:\/\/[^"]+)"/;
+  const thumbMatch = processedMarkdown.match(thumbnailRegex);
+  if (thumbMatch) {
+      const rawUrl = thumbMatch[1];
+      // 이미 Cloudinary URL이 아닌 경우에만 업로드
+      if (!rawUrl.includes('res.cloudinary.com')) {
+          logger.process(`[Cloudinary Upload] Uploading thumbnail: ${rawUrl}`);
+          const cloudinaryUrl = await uploadToCloudinary(rawUrl);
+          if (cloudinaryUrl) {
+              processedMarkdown = processedMarkdown.replace(rawUrl, cloudinaryUrl);
+          }
+      }
+  }
+
+  // 2. 본문 이미지 매칭 (![alt](URL "title") 또는 ![alt](URL))
+  const bodyImageRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)/g;
+  const bodyMatches = [...processedMarkdown.matchAll(bodyImageRegex)];
+
+  for (const match of bodyMatches) {
+      const rawUrl = match[2];
+      if (!rawUrl.includes('res.cloudinary.com')) {
+          logger.process(`[Cloudinary Upload] Uploading body image: ${rawUrl}`);
+          const cloudinaryUrl = await uploadToCloudinary(rawUrl);
+          if (cloudinaryUrl) {
+              processedMarkdown = processedMarkdown.replace(rawUrl, cloudinaryUrl);
+          }
+      }
+  }
+  
+  return processedMarkdown;
+}
+
+app.post('/api/publish', async (req, res) => {
+  let { markdown, region = 'KR' } = req.body;
   if (!markdown) return res.status(400).json({ error: 'Markdown content missing' });
   
+  // 배포 시점에 일괄적으로 Cloudinary에 업로드 후 치환
+  markdown = await processMarkdownImagesToCloudinary(markdown);
+
   const lang = region === 'US' ? 'en' : 'ko';
   const timestamp = Date.now();
   const filename = `trend-${timestamp}.md`;
@@ -553,9 +642,12 @@ app.post('/api/publish', (req, res) => {
 });
 
 app.post('/api/push-github', async (req, res) => {
-  const { markdown, region = 'KR' } = req.body;
+  let { markdown, region = 'KR' } = req.body;
   if (!markdown) return res.status(400).json({ error: 'Markdown content missing' });
   
+  // 깃허브 푸시 시점에 일괄적으로 Cloudinary에 업로드 후 치환
+  markdown = await processMarkdownImagesToCloudinary(markdown);
+
   if (!process.env.GITHUB_TOKEN) {
       logger.error("[GitHub Push Error]", "GITHUB_TOKEN is not defined in .env");
       return res.status(500).json({ error: 'GITHUB_TOKEN is missing in server environment.' });

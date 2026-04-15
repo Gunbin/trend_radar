@@ -12,6 +12,14 @@ import path from 'path';
 import logger from './logger.js';
 import { exec } from 'child_process';
 import util from 'util';
+import { v2 as cloudinary } from 'cloudinary';
+
+// Cloudinary Configuration
+cloudinary.config({ 
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dvnespequ', 
+    api_key: process.env.CLOUDINARY_API_KEY || '519385854574946', 
+    api_secret: process.env.CLOUDINARY_API_SECRET || 'LsV21AkOqyYIj6oE_Y1eR_oi4zU'
+});
 
 const execPromise = util.promisify(exec);
 
@@ -176,8 +184,32 @@ async function getOpenverseImage(keyword) {
   return null;
 }
 
+// --- Cloudinary Upload Helper ---
+async function uploadToCloudinary(url) {
+  if (!url) return null;
+  try {
+      const uploadResult = await cloudinary.uploader.upload(url, {
+          folder: 'blogAutoPosting'
+      });
+      const optimizeUrl = cloudinary.url(uploadResult.public_id, {
+          fetch_format: 'auto',
+          quality: 'auto'
+      });
+      logger.success(`[Cloudinary] Uploaded image: ${optimizeUrl}`);
+      return optimizeUrl;
+  } catch (error) {
+      logger.error('Cloudinary Upload Error', error.message);
+      return url; // 실패 시 원본 URL 폴백
+  }
+}
+
 // --- Master Image Dispatcher ---
 async function getRandomImage(keyword, isThumbnail = false) {
+  const rawUrl = await getRawRandomImage(keyword, isThumbnail);
+  return await uploadToCloudinary(rawUrl);
+}
+
+async function getRawRandomImage(keyword, isThumbnail = false) {
   let searchQuery = keyword;
   if (Array.isArray(keyword)) {
     searchQuery = keyword[Math.floor(Math.random() * keyword.length)];

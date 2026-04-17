@@ -180,14 +180,31 @@ async function getOpenverseImage(keyword) {
         q: keyword, 
         categories: 'illustration,digitized_artwork', // Cartoons, illustrations, and digital art
         extension: 'jpg,png',       // Only common web formats
-        page_size: 5 
+        page_size: 10 
       },
       headers: { 'User-Agent': 'TrendRadar/1.0' }
     });
+    
     if (res.data.results && res.data.results.length > 0) {
-      const randomIndex = Math.floor(Math.random() * res.data.results.length);
-      // Use "thumbnail" instead of "url" because it is proxied and hotlink-friendly
-      return res.data.results[randomIndex].thumbnail;
+      // Shuffle the results to get a random one, but try multiple if some are broken
+      const results = res.data.results.sort(() => Math.random() - 0.5);
+      
+      for (const item of results) {
+        const imageUrl = item.thumbnail;
+        if (!imageUrl) continue;
+        
+        try {
+          // Verify if the image is actually accessible
+          await axios.head(imageUrl, { 
+            timeout: 3000,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+          });
+          return imageUrl; // Valid image found
+        } catch (imgError) {
+          logger.error('Openverse Image Broken (Skipping)', imageUrl);
+          continue; // Try the next one
+        }
+      }
     }
   } catch (error) {
     logger.error('Openverse API Error', error.message);
@@ -485,7 +502,10 @@ app.post('/api/generate-post', async (req, res) => {
       const prompt = promptManager.getPrompt(promptKey, lang, {
         mainKeyword: postPlan.mainKeyword,
         searchIntent: postPlan.searchIntent,
+        contentDepth: postPlan.contentDepth || 'Normal',
+        conclusionType: postPlan.conclusionType || 'Q&A',
         coreFact: postPlan.coreFact || '최신 트렌드 데이터',
+        coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
         subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
         seoKeywords: tags.join(', '),
         lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
@@ -530,6 +550,7 @@ app.post('/api/generate-post', async (req, res) => {
   const thumbnailUrl = await getRandomImage(selectedTitle, true);
 
   // 3. 본문 내 이미지 치환 (Alt 텍스트 + 영문 키워드 기반)
+  // [Case A] 마크다운 문법을 지킨 경우: ![alt](URL "title")
   const bodyImageRegex = /!\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g;
   const bodyMatches = [...bodyMarkdown.matchAll(bodyImageRegex)];
   
@@ -539,20 +560,32 @@ app.post('/api/generate-post', async (req, res) => {
       const placeholderUrl = match[2];
       const englishKeyword = match[3];
 
-      // 플레이스홀더 URL을 가지고 있는 이미지만 처리
       if (placeholderUrl.includes('IMAGE_PLACEHOLDER')) {
           const searchKeyword = englishKeyword || altText;
-          const skipTranslation = !!englishKeyword; // 영문 키워드가 제공되었다면 번역 생략
-          
-          logger.process(`[Image Fetch] Fetching body image for Keyword: "${searchKeyword}"`);
+          const skipTranslation = !!englishKeyword;
           const realImageUrl = await getRandomImage(searchKeyword, false, skipTranslation);
           
           if (realImageUrl) {
-              // 치환 시 기존 플레이스홀더 부분을 실제 이미지 URL로 교체하되, Title 속성도 깔끔하게 제거하거나 유지
-              // 여기서는 마크다운 문법을 깔끔하게 유지하기 위해 전체 매치 구문을 통째로 갈아끼웁니다.
               const replacement = `![${altText}](${realImageUrl})`;
               bodyMarkdown = bodyMarkdown.replace(fullMatch, replacement);
           }
+      }
+  }
+
+  // [Case B] AI가 문법을 빼먹고 플레이스홀더만 생으로 출력한 경우: IMAGE_PLACEHOLDER_N
+  const rawPlaceholderRegex = /IMAGE_PLACEHOLDER_(\d+)/g;
+  const rawMatches = [...bodyMarkdown.matchAll(rawPlaceholderRegex)];
+
+  for (const match of rawMatches) {
+      const fullMatch = match[0]; // IMAGE_PLACEHOLDER_2 등
+      logger.warn(`[Image Fetch] AI omitted markdown for ${fullMatch}. Applying fallback replacement.`);
+      
+      // 생으로 노출된 경우 메인 키워드 기반으로 이미지 검색
+      const realImageUrl = await getRandomImage(postPlan.mainKeyword, false, false);
+      if (realImageUrl) {
+          // 이미지 태그로 감싸서 치환
+          const replacement = `\n\n![${postPlan.mainKeyword}](${realImageUrl})\n\n`;
+          bodyMarkdown = bodyMarkdown.replace(fullMatch, replacement);
       }
   }
 

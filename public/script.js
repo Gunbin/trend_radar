@@ -4,7 +4,7 @@ let currentTrendsData = null;
 let APP_CONFIG = {
     interval: 30000,
     sources: { 
-        KR: { google: true, nate: true, signal: true },
+        KR: { google: true, nate: true, signal: true, fss: true, policy: true, ppomppu: true, fmkorea: true },
         US: { google: true, reddit: true, yahoo: true }
     },
     topicCount: 3,
@@ -23,7 +23,18 @@ function loadSettings() {
                 APP_CONFIG.sources.KR.nate = parsed.sources.nate;
                 APP_CONFIG.sources.KR.signal = parsed.sources.signal;
             } else if (parsed.sources) {
-                APP_CONFIG.sources = { ...APP_CONFIG.sources, ...parsed.sources };
+                // Merge loaded config but default new ones to true
+                const loadedKR = parsed.sources.KR || {};
+                APP_CONFIG.sources.KR = {
+                    ...APP_CONFIG.sources.KR,
+                    ...loadedKR
+                };
+                
+                const loadedUS = parsed.sources.US || {};
+                APP_CONFIG.sources.US = {
+                    ...APP_CONFIG.sources.US,
+                    ...loadedUS
+                };
             }
             APP_CONFIG.interval = parsed.interval || APP_CONFIG.interval;
             APP_CONFIG.topicCount = parsed.topicCount || APP_CONFIG.topicCount;
@@ -41,6 +52,10 @@ function syncUIToSettings() {
     document.getElementById('src-google').checked = APP_CONFIG.sources.KR.google;
     document.getElementById('src-nate').checked = APP_CONFIG.sources.KR.nate;
     document.getElementById('src-signal').checked = APP_CONFIG.sources.KR.signal;
+    document.getElementById('src-fss').checked = APP_CONFIG.sources.KR.fss !== false;
+    document.getElementById('src-policy').checked = APP_CONFIG.sources.KR.policy !== false;
+    document.getElementById('src-ppomppu').checked = APP_CONFIG.sources.KR.ppomppu !== false;
+    document.getElementById('src-fmkorea').checked = APP_CONFIG.sources.KR.fmkorea !== false;
     
     document.getElementById('src-google-us').checked = APP_CONFIG.sources.US.google;
     document.getElementById('src-reddit').checked = APP_CONFIG.sources.US.reddit;
@@ -61,6 +76,10 @@ function saveSettings() {
     APP_CONFIG.sources.KR.google = document.getElementById('src-google').checked;
     APP_CONFIG.sources.KR.nate = document.getElementById('src-nate').checked;
     APP_CONFIG.sources.KR.signal = document.getElementById('src-signal').checked;
+    APP_CONFIG.sources.KR.fss = document.getElementById('src-fss').checked;
+    APP_CONFIG.sources.KR.policy = document.getElementById('src-policy').checked;
+    APP_CONFIG.sources.KR.ppomppu = document.getElementById('src-ppomppu').checked;
+    APP_CONFIG.sources.KR.fmkorea = document.getElementById('src-fmkorea').checked;
     
     APP_CONFIG.sources.US.google = document.getElementById('src-google-us').checked;
     APP_CONFIG.sources.US.reddit = document.getElementById('src-reddit').checked;
@@ -88,6 +107,11 @@ function updatePanelVisibility() {
         document.querySelector('.google-panel').style.display = APP_CONFIG.sources.KR.google ? 'flex' : 'none';
         document.querySelector('.signal-panel').style.display = APP_CONFIG.sources.KR.nate ? 'flex' : 'none';
         document.querySelector('.namu-panel').style.display = APP_CONFIG.sources.KR.signal ? 'flex' : 'none';
+        document.querySelector('.fss-panel').style.display = APP_CONFIG.sources.KR.fss ? 'flex' : 'none';
+        document.querySelector('.policy-panel').style.display = APP_CONFIG.sources.KR.policy ? 'flex' : 'none';
+        document.querySelector('.ppomppu-panel').style.display = APP_CONFIG.sources.KR.ppomppu ? 'flex' : 'none';
+        document.querySelector('.fmkorea-panel').style.display = APP_CONFIG.sources.KR.fmkorea ? 'flex' : 'none';
+        
         document.querySelector('.reddit-panel').style.display = 'none';
         document.querySelector('.yahoo-panel').style.display = 'none';
         
@@ -98,6 +122,11 @@ function updatePanelVisibility() {
         document.querySelector('.google-panel').style.display = APP_CONFIG.sources.US.google ? 'flex' : 'none';
         document.querySelector('.signal-panel').style.display = 'none';
         document.querySelector('.namu-panel').style.display = 'none';
+        document.querySelector('.fss-panel').style.display = 'none';
+        document.querySelector('.policy-panel').style.display = 'none';
+        document.querySelector('.ppomppu-panel').style.display = 'none';
+        document.querySelector('.fmkorea-panel').style.display = 'none';
+        
         document.querySelector('.reddit-panel').style.display = APP_CONFIG.sources.US.reddit ? 'flex' : 'none';
         document.querySelector('.yahoo-panel').style.display = APP_CONFIG.sources.US.yahoo ? 'flex' : 'none';
         
@@ -118,6 +147,10 @@ async function fetchTrends() {
         google: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.google) || (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.google) ? rawData.google : [],
         signal: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.nate) ? rawData.signal : [],
         namu: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.signal) ? rawData.namu : [],
+        fss: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fss) ? rawData.fss : [],
+        policy: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.policy) ? rawData.policy : [],
+        ppomppu: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.ppomppu) ? rawData.ppomppu : [],
+        fmkorea: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fmkorea) ? rawData.fmkorea : [],
         reddit: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.reddit) ? rawData.reddit : [],
         yahoo: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.yahoo) ? rawData.yahoo : []
     };
@@ -189,6 +222,66 @@ async function fetchTrends() {
             </div>
           `;
         });
+    }
+
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fss) {
+        renderList('fss-list', data.fss, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:#ff5555">> 경보발령: ${new Date(item.pubDate).toLocaleDateString()}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">상세보기</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.policy) {
+        renderList('policy-list', data.policy, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:#55ff55">> 정책발표: ${new Date(item.pubDate).toLocaleDateString()}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">상세보기</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.ppomppu) {
+        renderList('ppomppu-list', data.ppomppu, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:var(--namu-color)">> HOT DEAL</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">바로가기</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fmkorea) {
+        renderList('fmkorea-list', data.fmkorea, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:var(--neon-color)">> VIRAL TREND</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">바로가기</a>
+                </div>
+              </div>
+            </div>
+        `);
     }
 
     if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.reddit) {

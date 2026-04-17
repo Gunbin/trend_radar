@@ -305,9 +305,27 @@ async function getRawRandomImage(keyword, isThumbnail = false, skipTranslation =
   return 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=640&q=80';
 }
 
+// --- API Fetch Retry Helper ---
+async function fetchWithRetry(name, fetchFn, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const data = await fetchFn();
+      return data;
+    } catch (error) {
+      if (i < retries) {
+        logger.warn(`[${name}] Error: ${error.message}. Retrying ${i+1}/${retries}...`);
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        logger.error(`[${name}] Final Error`, error.message);
+        return [];
+      }
+    }
+  }
+}
+
 // 1. Google Trends (다국어 지원)
 async function getGoogleTrends(geo = 'KR') {
-  try {
+  return fetchWithRetry('Google Trends', async () => {
     const res = await axios.get(`https://trends.google.com/trending/rss?geo=${geo}`, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     });
@@ -325,12 +343,12 @@ async function getGoogleTrends(geo = 'KR') {
         source: ni['ht:news_item_source'] ? ni['ht:news_item_source'][0] : 'News'
       })).slice(0, 2) : []
     }));
-  } catch (error) { return []; }
+  });
 }
 
 // 2. Nate (한국 전용)
 async function getSignalTrends() {
-  try {
+  return fetchWithRetry('Nate Trends', async () => {
     const res = await axios.get('https://www.nate.com/js/data/jsonLiveKeywordDataV1.js?v=' + new Date().getTime(), {
       responseType: 'arraybuffer',
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -347,12 +365,12 @@ async function getSignalTrends() {
         }));
     }
     return [];
-  } catch (error) { return []; }
+  });
 }
 
 // 3. Signal.bz (한국 전용)
 async function getNamuwikiTrends() {
-  try {
+  return fetchWithRetry('Signal.bz', async () => {
     const res = await axios.get('https://api.signal.bz/news/realtime', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
       timeout: 5000
@@ -365,12 +383,12 @@ async function getNamuwikiTrends() {
         }));
     }
     return [];
-  } catch (error) { return []; }
+  });
 }
 
 // 4. Reddit Trends (영미권 전용 - 인기 게시물 기반)
 async function getRedditTrends() {
-  try {
+  return fetchWithRetry('Reddit Trends', async () => {
     const res = await axios.get('https://www.reddit.com/r/popular/top.json?limit=10', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     });
@@ -381,15 +399,12 @@ async function getRedditTrends() {
       url: `https://reddit.com${child.data.permalink}`,
       subreddit: child.data.subreddit
     }));
-  } catch (error) {
-    logger.error('Reddit API Error', error.message);
-    return [];
-  }
+  });
 }
 
 // 5. Yahoo News (영미권 전용 - RSS)
 async function getYahooNewsRSS() {
-  try {
+  return fetchWithRetry('Yahoo News', async () => {
     const res = await axios.get('https://news.yahoo.com/rss/', {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
         timeout: 5000
@@ -403,10 +418,132 @@ async function getYahooNewsRSS() {
       url: item.link[0],
       pubDate: item.pubDate ? item.pubDate[0] : ''
     }));
-  } catch (error) {
-      logger.error('Yahoo News API Error', error.message);
-      return []; 
-  }
+  });
+}
+
+// 6. 금융감독원 소비자경보 (한국 전용 - RSS 대신 HTML 스크래핑)
+async function getFssAlerts() {
+  return fetchWithRetry('FSS Alerts', async () => {
+    const res = await axios.get('https://www.fss.or.kr/fss/bbs/B0000188/list.do?menuNo=200213', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        timeout: 5000
+    });
+    const $ = cheerio.load(res.data);
+    const alerts = [];
+    $('.bd-list .title a').each((i, el) => {
+        if (alerts.length >= 10) return false;
+        const title = $(el).text().trim();
+        let link = $(el).attr('href') || '';
+        if (link.startsWith('?')) link = 'https://www.fss.or.kr/fss/bbs/B0000188/list.do' + link;
+        
+        if (title) {
+            alerts.push({
+                rank: alerts.length + 1,
+                keyword: title,
+                url: link,
+                pubDate: new Date().toISOString() // HTML 목록에 날짜가 파싱하기 까다로우므로 현재 날짜로 대체
+            });
+        }
+    });
+    return alerts;
+  });
+}
+
+// 7. 정책브리핑 (한국 전용 - RSS)
+async function getPolicyBriefing() {
+  return fetchWithRetry('Policy Briefing', async () => {
+    // https 연결 리셋(ECONNRESET) 방지를 위해 http 사용
+    const res = await axios.get('http://www.korea.kr/rss/policy.xml', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        timeout: 5000
+    });
+    const parser = new xml2js.Parser();
+    const result = await parser.parseStringPromise(res.data);
+    const items = result.rss.channel[0].item.slice(0, 10);
+    return items.map((item, i) => ({
+      rank: i + 1,
+      keyword: item.title[0],
+      url: item.link[0],
+      pubDate: item.pubDate ? item.pubDate[0] : ''
+    }));
+  });
+}
+
+// 8. 뽐뿌 정보/강좌 게시판 (한국 전용 - 핫딜 대신 정보성 글 크롤링)
+async function getPpomppuHotDeals() {
+  return fetchWithRetry('Ppomppu Info', async () => {
+    const res = await axios.get('https://www.ppomppu.co.kr/zboard/zboard.php?id=etc_info', {
+        responseType: 'arraybuffer',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        timeout: 5000
+    });
+    let text = iconv.decode(res.data, 'euc-kr');
+    const $ = cheerio.load(text);
+    const deals = [];
+    
+    // 정보게시판(etc_info)의 게시글 목록 추출
+    $('.baseList-title').each((i, el) => {
+        if (deals.length >= 10) return false;
+        
+        const title = $(el).text().replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim();
+        let link = $(el).attr('href') || '';
+        
+        // 공지사항 등 제외 (view.php?id=etc_info 포함하는 링크만)
+        if (!link.includes('id=etc_info')) return true; // continue
+        
+        if (!link.startsWith('http')) {
+            link = 'https://www.ppomppu.co.kr/zboard/' + link;
+        }
+        
+        // 카테고리 추출
+        let category = $(el).closest('.baseList-box').find('.baseList-small').text().replace(/[\[\]]/g, '').trim() || '정보';
+        
+        if (title && !title.includes('공지')) {
+            deals.push({
+                rank: deals.length + 1,
+                keyword: `[${category}] ${title}`, // AI가 판단하기 쉽도록 카테고리 부착
+                url: link
+            });
+        }
+    });
+    
+    return deals;
+  });
+}
+
+// 9. 바이럴 커뮤니티 베스트 (한국 전용 - 펨코 크롤링, DC는 차단이 심해 대체)
+async function getFmkoreaBest() {
+  return fetchWithRetry('FMKorea Best', async () => {
+    const res = await axios.get('https://www.fmkorea.com/best', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        timeout: 5000
+    });
+    const $ = cheerio.load(res.data);
+    const bests = [];
+    
+    $('.title').each((i, el) => {
+        if (bests.length >= 10) return false;
+        
+        const parentLi = $(el).closest('li');
+        // 펨코 게시판 카테고리 추출 (예: 유머, 포텐 등)
+        let category = parentLi.find('.category').text().trim().replace(/[\[\]\/]/g, '').trim() || '이슈';
+        
+        // 펨코 제목의 댓글수 [123] 제거
+        let title = $(el).find('a').text().replace(/\[\d+\]/g, '').trim();
+        let link = $(el).find('a').attr('href') || '';
+        if (link.startsWith('/')) link = 'https://www.fmkorea.com' + link;
+        
+        if (title && !title.includes('공지')) {
+            bests.push({
+                rank: bests.length + 1,
+                keyword: `[${category}] ${title}`, // AI가 맥락을 파악할 수 있도록 카테고리 부착
+                url: link
+            });
+        }
+    });
+    
+    return bests;
+  });
 }
 
 app.get('/api/config/prompts', (req, res) => {
@@ -427,10 +564,22 @@ app.get('/api/trends', async (req, res) => {
     ]);
     res.json({ timestamp: new Date().toISOString(), region, google, reddit, yahoo });
   } else {
-    const [google, signal, namu] = await Promise.all([
-      getGoogleTrends('KR'), getSignalTrends(), getNamuwikiTrends()
+    // KR 지역 요청 시 7개의 소스를 병렬로 가져옴
+    const [google, signal, namu, fss, policy, ppomppu, fmkorea] = await Promise.all([
+      getGoogleTrends('KR'), getSignalTrends(), getNamuwikiTrends(),
+      getFssAlerts(), getPolicyBriefing(), getPpomppuHotDeals(), getFmkoreaBest()
     ]);
-    res.json({ timestamp: new Date().toISOString(), region, google, signal, namu });
+    res.json({ 
+        timestamp: new Date().toISOString(), 
+        region, 
+        google, 
+        signal, 
+        namu,
+        fss,
+        policy,
+        ppomppu,
+        fmkorea
+    });
   }
 });
 

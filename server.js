@@ -100,28 +100,34 @@ async function getBestModels() {
 // --- Translation Helper (For better image search) ---
 async function translateToEnglish(keyword) {
   if (!keyword || keyword.trim() === '') return 'abstract';
-  try {
-    // 1.5-flash 모델 제거 대비 (최신 2.5-flash 또는 2.0-flash 사용)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const prompt = `Translate the following Korean blog keyword into a simple, clear English search term for an image database (like Pexels/Pixabay). Output ONLY the English words, no punctuation or extra text. Keyword: "${keyword}"`;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let translated = response.text().trim().replace(/["'.]/g, '');
-    return translated || keyword; 
-  } catch (error) {
-    // 만약 2.5-flash 도 에러나면 2.0-flash 로 폴백 시도
+  
+  // Rate Limit (429) 에러 방지를 위해 번역 시도 전 3초 대기
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  const prompt = `Translate the following Korean blog keyword into a simple, clear English search term for an image database (like Pexels/Pixabay). Output ONLY the English words, no punctuation or extra text. Keyword: "${keyword}"`;
+  
+  // getBestModels()를 통해 가용한 최적의 모델 목록을 가져와 순회
+  const models = await getBestModels();
+  
+  for (const modelName of models) {
     try {
-      const fallbackModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const prompt = `Translate the following Korean blog keyword into a simple, clear English search term for an image database (like Pexels/Pixabay). Output ONLY the English words, no punctuation or extra text. Keyword: "${keyword}"`;
-      const result = await fallbackModel.generateContent(prompt);
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
       const response = await result.response;
       let translated = response.text().trim().replace(/["'.]/g, '');
-      return translated || keyword;
-    } catch(fallbackError) {
-      logger.error('Translation Error', fallbackError.message);
-      return keyword; 
+      
+      if (translated) {
+        return translated;
+      }
+    } catch (error) {
+      logger.error(`[Translation] Model ${modelName} failed: ${error.message}`);
+      // 실패 시 다음 모델로 넘어가서 재시도
     }
   }
+
+  // 모든 모델이 실패한 경우 원본 키워드를 반환
+  logger.error('Translation Error: All dynamic models failed to translate.');
+  return keyword;
 }
 
 // --- Image Fetchers ---
@@ -546,8 +552,19 @@ app.post('/api/generate-post', async (req, res) => {
       (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
       postPlan.viralTitle;
   
-  logger.process(`[Image Fetch] Fetching thumbnail for title: ${selectedTitle}`);
-  const thumbnailUrl = await getRandomImage(selectedTitle, true);
+  let thumbnailSearchKeyword = selectedTitle;
+  let skipThumbnailTranslation = false;
+
+  if (region === 'US') {
+      skipThumbnailTranslation = true;
+  } else if (postPlan.imageSearchKeywords && postPlan.imageSearchKeywords.length > 0) {
+      // 한국어라도 기획안에 이미 영어 검색 키워드가 준비되어 있다면 그것을 사용하고 번역을 건너뜁니다.
+      thumbnailSearchKeyword = postPlan.imageSearchKeywords[0];
+      skipThumbnailTranslation = true;
+  }
+
+  logger.process(`[Image Fetch] Fetching thumbnail for keyword: ${thumbnailSearchKeyword} (Title: ${selectedTitle})`);
+  const thumbnailUrl = await getRandomImage(thumbnailSearchKeyword, true, skipThumbnailTranslation);
 
   // 3. 본문 내 이미지 치환 (Alt 텍스트 + 영문 키워드 기반)
   // [Case A] 마크다운 문법을 지킨 경우: ![alt](URL "title")
@@ -560,9 +577,10 @@ app.post('/api/generate-post', async (req, res) => {
       const placeholderUrl = match[2];
       const englishKeyword = match[3];
 
-      if (placeholderUrl.includes('IMAGE_PLACEHOLDER')) {
+      // 오타 방지: IMAGE_PLACEHOLDER가 아닌 IMAGE_PLACEER 등 다양한 오타 대응
+      if (placeholderUrl.includes('IMAGE_PLACE')) {
           const searchKeyword = englishKeyword || altText;
-          const skipTranslation = !!englishKeyword;
+          const skipTranslation = !!englishKeyword || region === 'US';
           const realImageUrl = await getRandomImage(searchKeyword, false, skipTranslation);
           
           if (realImageUrl) {
@@ -572,16 +590,24 @@ app.post('/api/generate-post', async (req, res) => {
       }
   }
 
-  // [Case B] AI가 문법을 빼먹고 플레이스홀더만 생으로 출력한 경우: IMAGE_PLACEHOLDER_N
-  const rawPlaceholderRegex = /IMAGE_PLACEHOLDER_(\d+)/g;
+  // [Case B] AI가 문법을 빼먹고 플레이스홀더만 생으로 출력한 경우: IMAGE_PLACEHOLDER_N (또는 망가진 마크다운)
+  // 오타 방지를 위해 정규식을 IMAGE_PLACE[A-Z_]*\d+ 형태로 유연하게 변경
+  const rawPlaceholderRegex = /<img[^>]*IMAGE_PLACE[A-Z_]*\d+[^>]*>|!?\[[^\]]*\]\s*\(\s*[^)]*IMAGE_PLACE[A-Z_]*\d+[^)]*\)|!?\[\s*IMAGE_PLACE[A-Z_]*\d+\s*\]|IMAGE_PLACE[A-Z_]*\d+/g;
   const rawMatches = [...bodyMarkdown.matchAll(rawPlaceholderRegex)];
 
   for (const match of rawMatches) {
-      const fullMatch = match[0]; // IMAGE_PLACEHOLDER_2 등
+      const fullMatch = match[0]; // IMAGE_PLACEHOLDER_2, IMAGE_PLACEER_2 등
       logger.warn(`[Image Fetch] AI omitted markdown for ${fullMatch}. Applying fallback replacement.`);
       
-      // 생으로 노출된 경우 메인 키워드 기반으로 이미지 검색
-      const realImageUrl = await getRandomImage(postPlan.mainKeyword, false, false);
+      let fallbackSearchKeyword = postPlan.mainKeyword;
+      let skipFallbackTranslation = region === 'US';
+
+      if (region !== 'US' && postPlan.imageSearchKeywords && postPlan.imageSearchKeywords.length > 0) {
+          fallbackSearchKeyword = postPlan.imageSearchKeywords[Math.floor(Math.random() * postPlan.imageSearchKeywords.length)];
+          skipFallbackTranslation = true;
+      }
+
+      const realImageUrl = await getRandomImage(fallbackSearchKeyword, false, skipFallbackTranslation);
       if (realImageUrl) {
           // 이미지 태그로 감싸서 치환
           const replacement = `\n\n![${postPlan.mainKeyword}](${realImageUrl})\n\n`;

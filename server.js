@@ -514,23 +514,28 @@ async function getPpomppuHotDeals() {
 // 9. 바이럴 커뮤니티 베스트 (한국 전용 - 펨코 크롤링, DC는 차단이 심해 대체)
 async function getFmkoreaBest() {
   return fetchWithRetry('FMKorea Best', async () => {
-    const res = await axios.get('https://www.fmkorea.com/best', {
+    const res = await axios.get('https://www.fmkorea.com/best2', {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
         timeout: 5000
     });
     const $ = cheerio.load(res.data);
     const bests = [];
     
+    // 전역 .title 선택은 다른 블록 제목까지 섞일 수 있어, best2 링크만 엄격히 허용
     $('.title').each((i, el) => {
         if (bests.length >= 10) return false;
         
-        const parentLi = $(el).closest('li');
+        const anchor = $(el).find('a').first();
+        let link = anchor.attr('href') || '';
+        const isBest2Link = link.includes('/best2/') || link.includes('mid=best2');
+        if (!isBest2Link) return true; // continue
+
+        const parentLi = anchor.closest('li');
         // 펨코 게시판 카테고리 추출 (예: 유머, 포텐 등)
         let category = parentLi.find('.category').text().trim().replace(/[\[\]\/]/g, '').trim() || '이슈';
         
         // 펨코 제목의 댓글수 [123] 제거
-        let title = $(el).find('a').text().replace(/\[\d+\]/g, '').trim();
-        let link = $(el).find('a').attr('href') || '';
+        let title = anchor.text().replace(/\[\d+\]/g, '').trim();
         if (link.startsWith('/')) link = 'https://www.fmkorea.com' + link;
         
         if (title && !title.includes('공지')) {

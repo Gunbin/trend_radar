@@ -5,7 +5,7 @@ let APP_CONFIG = {
     interval: 30000,
     sources: { 
         KR: { google: true, nate: true, signal: true, fss: true, policy: true, ppomppu: true, fmkorea: true },
-        US: { google: true, reddit: true, yahoo: true }
+        US: { google: true, reddit: true, redditScams: true, redditPoverty: true, redditFrugal: true, yahoo: true, buzzfeed: true }
     },
     topicCount: 3,
     region: 'KR'
@@ -59,7 +59,11 @@ function syncUIToSettings() {
     
     document.getElementById('src-google-us').checked = APP_CONFIG.sources.US.google;
     document.getElementById('src-reddit').checked = APP_CONFIG.sources.US.reddit;
+    document.getElementById('src-reddit-scams').checked = APP_CONFIG.sources.US.redditScams !== false;
+    document.getElementById('src-reddit-poverty').checked = APP_CONFIG.sources.US.redditPoverty !== false;
+    document.getElementById('src-reddit-frugal').checked = APP_CONFIG.sources.US.redditFrugal !== false;
     document.getElementById('src-yahoo').checked = APP_CONFIG.sources.US.yahoo;
+    document.getElementById('src-buzzfeed').checked = APP_CONFIG.sources.US.buzzfeed !== false;
 
     document.getElementById('cfg-topics').value = APP_CONFIG.topicCount;
     document.getElementById('region-select').value = APP_CONFIG.region || 'KR';
@@ -83,7 +87,11 @@ function saveSettings() {
     
     APP_CONFIG.sources.US.google = document.getElementById('src-google-us').checked;
     APP_CONFIG.sources.US.reddit = document.getElementById('src-reddit').checked;
+    APP_CONFIG.sources.US.redditScams = document.getElementById('src-reddit-scams').checked;
+    APP_CONFIG.sources.US.redditPoverty = document.getElementById('src-reddit-poverty').checked;
+    APP_CONFIG.sources.US.redditFrugal = document.getElementById('src-reddit-frugal').checked;
     APP_CONFIG.sources.US.yahoo = document.getElementById('src-yahoo').checked;
+    APP_CONFIG.sources.US.buzzfeed = document.getElementById('src-buzzfeed').checked;
 
     APP_CONFIG.topicCount = parseInt(document.getElementById('cfg-topics').value);
     
@@ -94,6 +102,7 @@ function saveSettings() {
 
 document.getElementById('region-select').addEventListener('change', (e) => {
     APP_CONFIG.region = e.target.value;
+    currentTrendsData = null; // Clear old data to prevent stale AI analysis
     localStorage.setItem('trendRadar_cfg', JSON.stringify(APP_CONFIG));
     updatePanelVisibility();
     syncUIToSettings(); // Sync checkboxes visibility in settings
@@ -102,6 +111,13 @@ document.getElementById('region-select').addEventListener('change', (e) => {
 
 function updatePanelVisibility() {
     const isKR = APP_CONFIG.region === 'KR';
+    
+    // Clear all lists when switching to avoid stale data display
+    const lists = ['google-list', 'signal-list', 'namu-list', 'fss-list', 'policy-list', 'ppomppu-list', 'fmkorea-list', 'reddit-list', 'reddit-scams-list', 'reddit-poverty-list', 'reddit-frugal-list', 'yahoo-list', 'buzzfeed-list'];
+    lists.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<li class="loading">SWITCHING REGION...</li>';
+    });
     
     if (isKR) {
         document.querySelector('.google-panel').style.display = APP_CONFIG.sources.KR.google ? 'flex' : 'none';
@@ -113,7 +129,11 @@ function updatePanelVisibility() {
         document.querySelector('.fmkorea-panel').style.display = APP_CONFIG.sources.KR.fmkorea ? 'flex' : 'none';
         
         document.querySelector('.reddit-panel').style.display = 'none';
+        document.querySelector('.reddit-scams-panel').style.display = 'none';
+        document.querySelector('.reddit-poverty-panel').style.display = 'none';
+        document.querySelector('.reddit-frugal-panel').style.display = 'none';
         document.querySelector('.yahoo-panel').style.display = 'none';
+        document.querySelector('.buzzfeed-panel').style.display = 'none';
         
         document.getElementById('src-group-kr').classList.remove('hidden');
         document.getElementById('src-group-us').classList.add('hidden');
@@ -128,7 +148,11 @@ function updatePanelVisibility() {
         document.querySelector('.fmkorea-panel').style.display = 'none';
         
         document.querySelector('.reddit-panel').style.display = APP_CONFIG.sources.US.reddit ? 'flex' : 'none';
+        document.querySelector('.reddit-scams-panel').style.display = APP_CONFIG.sources.US.redditScams !== false ? 'flex' : 'none';
+        document.querySelector('.reddit-poverty-panel').style.display = APP_CONFIG.sources.US.redditPoverty !== false ? 'flex' : 'none';
+        document.querySelector('.reddit-frugal-panel').style.display = APP_CONFIG.sources.US.redditFrugal !== false ? 'flex' : 'none';
         document.querySelector('.yahoo-panel').style.display = APP_CONFIG.sources.US.yahoo ? 'flex' : 'none';
+        document.querySelector('.buzzfeed-panel').style.display = APP_CONFIG.sources.US.buzzfeed !== false ? 'flex' : 'none';
         
         document.getElementById('src-group-kr').classList.add('hidden');
         document.getElementById('src-group-us').classList.remove('hidden');
@@ -138,7 +162,11 @@ function updatePanelVisibility() {
 
 async function fetchTrends() {
   try {
-    const res = await fetch(`/api/trends?region=${APP_CONFIG.region || 'KR'}`);
+    const activeSources = APP_CONFIG.region === 'KR' 
+        ? Object.entries(APP_CONFIG.sources.KR).filter(([_, val]) => val).map(([key]) => key).join(',')
+        : Object.entries(APP_CONFIG.sources.US).filter(([_, val]) => val).map(([key]) => key).join(',');
+
+    const res = await fetch(`/api/trends?region=${APP_CONFIG.region || 'KR'}&sources=${activeSources}`);
     const rawData = await res.json();
     
     // Filter data based on active settings and region
@@ -152,6 +180,10 @@ async function fetchTrends() {
         ppomppu: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.ppomppu) ? rawData.ppomppu : [],
         fmkorea: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fmkorea) ? rawData.fmkorea : [],
         reddit: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.reddit) ? rawData.reddit : [],
+        redditScams: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditScams) ? rawData.redditScams : [],
+        redditPoverty: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditPoverty) ? rawData.redditPoverty : [],
+        redditFrugal: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditFrugal) ? rawData.redditFrugal : [],
+        buzzfeed: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.buzzfeed) ? rawData.buzzfeed : [],
         yahoo: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.yahoo) ? rawData.yahoo : []
     };
     
@@ -314,11 +346,81 @@ async function fetchTrends() {
         `);
     }
 
-    const allKeywords = [
+    if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditScams) {
+        renderList('reddit-scams-list', data.redditScams, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:#ff5555">> SCAM ALERT / SCORE: ${item.score}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] 상세보기</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditPoverty) {
+        renderList('reddit-poverty-list', data.redditPoverty, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:#55ff55">> WELFARE INFO / SCORE: ${item.score}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] 상세보기</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditFrugal) {
+        renderList('reddit-frugal-list', data.redditFrugal, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:var(--namu-color)">> SMART TIP / SCORE: ${item.score}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] 상세보기</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.buzzfeed) {
+        renderList('buzzfeed-list', data.buzzfeed, (item) => `
+            <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="content">
+                <div class="keyword">${item.keyword}</div>
+                <div class="meta">
+                  <span style="color:var(--neon-color)">> VIRAL TREND</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">바로가기</a>
+                </div>
+              </div>
+            </div>
+        `);
+    }
+
+    const allKeywords = APP_CONFIG.region === 'KR' ? [
       ...(data.google || []).map(i => i.keyword),
       ...(data.signal || []).map(i => i.keyword),
       ...(data.namu || []).map(i => i.keyword),
+      ...(data.fss || []).map(i => i.keyword),
+      ...(data.policy || []).map(i => i.keyword),
+      ...(data.ppomppu || []).map(i => i.keyword),
+      ...(data.fmkorea || []).map(i => i.keyword)
+    ] : [
+      ...(data.google || []).map(i => i.keyword),
       ...(data.reddit || []).map(i => i.keyword),
+      ...(data.redditScams || []).map(i => i.keyword),
+      ...(data.redditPoverty || []).map(i => i.keyword),
+      ...(data.redditFrugal || []).map(i => i.keyword),
+      ...(data.buzzfeed || []).map(i => i.keyword),
       ...(data.yahoo || []).map(i => i.keyword)
     ];
     document.getElementById('trend-ticker').textContent = ' >>> ' + allKeywords.join(' | ') + ' <<< ';

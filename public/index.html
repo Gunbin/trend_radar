@@ -91,10 +91,42 @@
         </ul>
       </section>
 
+      <!-- Reddit Scams (US Only) -->
+      <section class="panel reddit-scams-panel" style="display: none;">
+        <h2 class="panel-title">> REDDIT_SCAMS <span class="blink">_</span></h2>
+        <ul class="trend-list" id="reddit-scams-list">
+          <li class="loading">CONNECTING TO REDDIT...</li>
+        </ul>
+      </section>
+
+      <!-- Reddit Poverty (US Only) -->
+      <section class="panel reddit-poverty-panel" style="display: none;">
+        <h2 class="panel-title">> REDDIT_POVERTY <span class="blink">_</span></h2>
+        <ul class="trend-list" id="reddit-poverty-list">
+          <li class="loading">CONNECTING TO REDDIT...</li>
+        </ul>
+      </section>
+
+      <!-- Reddit Frugal (US Only) -->
+      <section class="panel reddit-frugal-panel" style="display: none;">
+        <h2 class="panel-title">> REDDIT_FRUGAL <span class="blink">_</span></h2>
+        <ul class="trend-list" id="reddit-frugal-list">
+          <li class="loading">CONNECTING TO REDDIT...</li>
+        </ul>
+      </section>
+
       <!-- Yahoo News (US Only) -->
       <section class="panel yahoo-panel" style="display: none;">
         <h2 class="panel-title">> YAHOO_NEWS_US <span class="blink">_</span></h2>
         <ul class="trend-list" id="yahoo-list">
+          <li class="loading">FETCHING RSS FEED...</li>
+        </ul>
+      </section>
+
+      <!-- BuzzFeed Trending (US Only) -->
+      <section class="panel buzzfeed-panel" style="display: none;">
+        <h2 class="panel-title">> BUZZFEED_TRENDING <span class="blink">_</span></h2>
+        <ul class="trend-list" id="buzzfeed-list">
           <li class="loading">FETCHING RSS FEED...</li>
         </ul>
       </section>
@@ -158,7 +190,11 @@
                       <div class="checkbox-group hidden" id="src-group-us">
                           <label><input type="checkbox" id="src-google-us" checked> GOOGLE_TRENDS</label>
                           <label><input type="checkbox" id="src-reddit" checked> REDDIT_POPULAR</label>
+                          <label><input type="checkbox" id="src-reddit-scams" checked> REDDIT_SCAMS (LOSS)</label>
+                          <label><input type="checkbox" id="src-reddit-poverty" checked> REDDIT_POVERTY (WELFARE)</label>
+                          <label><input type="checkbox" id="src-reddit-frugal" checked> REDDIT_FRUGAL (SMART)</label>
                           <label><input type="checkbox" id="src-yahoo" checked> YAHOO_NEWS</label>
+                          <label><input type="checkbox" id="src-buzzfeed" checked> BUZZFEED_TRENDING</label>
                       </div>
                   </div>
                   <div class="setting-group">

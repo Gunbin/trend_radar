@@ -402,6 +402,77 @@ async function getRedditTrends() {
   });
 }
 
+// 4-1. Reddit Scams (영미권 전용 - Loss Aversion)
+async function getRedditScams() {
+  return fetchWithRetry('Reddit Scams', async () => {
+    const res = await axios.get('https://www.reddit.com/r/Scams/top.json?limit=10&t=day', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/1.0' },
+      timeout: 5000
+    });
+    return res.data.data.children.map((child, i) => ({
+      rank: i + 1,
+      keyword: child.data.title,
+      score: child.data.score,
+      url: `https://reddit.com${child.data.permalink}`,
+      subreddit: child.data.subreddit
+    }));
+  });
+}
+
+// 4-2. Reddit Poverty Finance (영미권 전용 - Welfare)
+async function getRedditPoverty() {
+  return fetchWithRetry('Reddit PovertyFinance', async () => {
+    const res = await axios.get('https://www.reddit.com/r/povertyfinance/top.json?limit=10&t=day', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/1.0' },
+      timeout: 5000
+    });
+    return res.data.data.children.map((child, i) => ({
+      rank: i + 1,
+      keyword: child.data.title,
+      score: child.data.score,
+      url: `https://reddit.com${child.data.permalink}`,
+      subreddit: child.data.subreddit
+    }));
+  });
+}
+
+// 4-3. Reddit Frugal & LifeProTips (영미권 전용 - Smart Consumer)
+async function getRedditFrugal() {
+  return fetchWithRetry('Reddit Frugal', async () => {
+    // Fetch both and interleave or just Frugal? Let's use Frugal for simplicity and impact
+    const res = await axios.get('https://www.reddit.com/r/Frugal/top.json?limit=10&t=day', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/1.0' },
+      timeout: 5000
+    });
+    return res.data.data.children.map((child, i) => ({
+      rank: i + 1,
+      keyword: child.data.title,
+      score: child.data.score,
+      url: `https://reddit.com${child.data.permalink}`,
+      subreddit: child.data.subreddit
+    }));
+  });
+}
+
+// 4-4. BuzzFeed Trending (영미권 전용 - Viral & Entertainment)
+async function getBuzzFeedTrending() {
+  return fetchWithRetry('BuzzFeed Trending', async () => {
+    const res = await axios.get('https://www.buzzfeed.com/trending.xml', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        timeout: 5000
+    });
+    const parser = new xml2js.Parser();
+    const result = await parser.parseStringPromise(res.data);
+    const items = result.rss.channel[0].item.slice(0, 10);
+    return items.map((item, i) => ({
+      rank: i + 1,
+      keyword: item.title[0],
+      url: item.link[0],
+      pubDate: item.pubDate ? item.pubDate[0] : ''
+    }));
+  });
+}
+
 // 5. Yahoo News (영미권 전용 - RSS)
 async function getYahooNewsRSS() {
   return fetchWithRetry('Yahoo News', async () => {
@@ -514,16 +585,27 @@ async function getPpomppuHotDeals() {
 // 9. 바이럴 커뮤니티 베스트 (한국 전용 - 펨코 크롤링, DC는 차단이 심해 대체)
 async function getFmkoreaBest() {
   return fetchWithRetry('FMKorea Best', async () => {
+    // 펨코 430 에러(봇 차단) 방지를 위해 요청 전 랜덤 지연 (0~2초)
+    await new Promise(r => setTimeout(r, Math.random() * 2000));
+
     const res = await axios.get('https://www.fmkorea.com/best2', {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-        timeout: 5000
+        headers: { 
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': 'https://www.fmkorea.com/',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'upgrade-insecure-requests': '1'
+        },
+        timeout: 10000
     });
     const $ = cheerio.load(res.data);
     const bests = [];
-    
+
     // 전역 .title 선택은 다른 블록 제목까지 섞일 수 있어, best2 링크만 엄격히 허용
-    $('.title').each((i, el) => {
-        if (bests.length >= 10) return false;
+    $('.title').each((i, el) => {        if (bests.length >= 10) return false;
         
         const anchor = $(el).find('a').first();
         let link = anchor.attr('href') || '';
@@ -561,29 +643,40 @@ app.get('/api/config/prompts', (req, res) => {
 });
 
 app.get('/api/trends', async (req, res) => {
-  const region = req.query.region || 'KR'; // 'KR' 또는 'US'
-  
+  const region = req.query.region || 'KR';
+  const sources = req.query.sources ? req.query.sources.split(',') : [];
+
+  const checkSource = (name) => sources.length === 0 || sources.includes(name);
+
   if (region === 'US') {
-    const [google, reddit, yahoo] = await Promise.all([
-      getGoogleTrends('US'), getRedditTrends(), getYahooNewsRSS()
-    ]);
-    res.json({ timestamp: new Date().toISOString(), region, google, reddit, yahoo });
-  } else {
-    // KR 지역 요청 시 7개의 소스를 병렬로 가져옴
-    const [google, signal, namu, fss, policy, ppomppu, fmkorea] = await Promise.all([
-      getGoogleTrends('KR'), getSignalTrends(), getNamuwikiTrends(),
-      getFssAlerts(), getPolicyBriefing(), getPpomppuHotDeals(), getFmkoreaBest()
+    const [google, reddit, yahoo, redditScams, redditPoverty, redditFrugal, buzzfeed] = await Promise.all([
+      checkSource('google') ? getGoogleTrends('US') : Promise.resolve([]),
+      checkSource('reddit') ? getRedditTrends() : Promise.resolve([]),
+      checkSource('yahoo') ? getYahooNewsRSS() : Promise.resolve([]),
+      checkSource('redditScams') ? getRedditScams() : Promise.resolve([]),
+      checkSource('redditPoverty') ? getRedditPoverty() : Promise.resolve([]),
+      checkSource('redditFrugal') ? getRedditFrugal() : Promise.resolve([]),
+      checkSource('buzzfeed') ? getBuzzFeedTrending() : Promise.resolve([])
     ]);
     res.json({ 
         timestamp: new Date().toISOString(), 
         region, 
-        google, 
-        signal, 
-        namu,
-        fss,
-        policy,
-        ppomppu,
-        fmkorea
+        google, reddit, yahoo, redditScams, redditPoverty, redditFrugal, buzzfeed
+    });
+  } else {
+    const [google, signal, namu, fss, policy, ppomppu, fmkorea] = await Promise.all([
+      checkSource('google') ? getGoogleTrends('KR') : Promise.resolve([]),
+      checkSource('nate') ? getSignalTrends() : Promise.resolve([]),
+      checkSource('signal') ? getNamuwikiTrends() : Promise.resolve([]),
+      checkSource('fss') ? getFssAlerts() : Promise.resolve([]),
+      checkSource('policy') ? getPolicyBriefing() : Promise.resolve([]),
+      checkSource('ppomppu') ? getPpomppuHotDeals() : Promise.resolve([]),
+      checkSource('fmkorea') ? getFmkoreaBest() : Promise.resolve([])
+    ]);
+    res.json({ 
+        timestamp: new Date().toISOString(), 
+        region, 
+        google, signal, namu, fss, policy, ppomppu, fmkorea
     });
   }
 });

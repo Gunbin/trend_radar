@@ -735,6 +735,13 @@ app.post('/api/generate-post', async (req, res) => {
   const { postPlan, region = 'KR' } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
 
+  const tags = (() => {
+    const raw = Array.isArray(postPlan?.seoKeywords) ? postPlan.seoKeywords.filter(Boolean) : [];
+    if (raw.length) return raw;
+    const mk = (postPlan?.mainKeyword || '').toString().trim();
+    return mk ? [mk] : [];
+  })();
+
   const modelsToTry = await getBestModels();
   
   let lastError = null;
@@ -749,8 +756,6 @@ app.post('/api/generate-post', async (req, res) => {
       
       const angle = postPlan.angleType || 'guide';
       const promptKey = `post_writing_${angle}`;
-
-      const tags = Array.isArray(postPlan.seoKeywords) ? postPlan.seoKeywords : [];
 
       const prompt = promptManager.getPrompt(promptKey, lang, {
         mainKeyword: postPlan.mainKeyword,
@@ -867,13 +872,12 @@ app.post('/api/generate-post', async (req, res) => {
   selectedCategory = selectedCategory.replace(/&/g, 'and').replace(/\s+/g, ' ').trim();
   
   const currentDate = new Date().toISOString().split('T')[0];
-  const tags = Array.isArray(postPlan.seoKeywords) ? postPlan.seoKeywords : [];
 
   const hugoHeader = `---
 author: "TrendRadar"
 title: "${selectedTitle.replace(/"/g, '\\"')}"
 date: ${currentDate}
-tags: [${tags.map(t => `"${t}"`).join(', ')}]
+tags: [${tags.map(t => `"${String(t).replace(/"/g, '\\"')}"`).join(', ')}]
 description: "${(postPlan.metaDescription || '').replace(/"/g, '\\"')}"
 categories: ["${selectedCategory}"]
 thumbnail: "${thumbnailUrl}"

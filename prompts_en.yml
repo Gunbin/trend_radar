@@ -45,13 +45,19 @@ tasks:
             "searchIntent": "The searcher's true intention or hidden anxiety",
             "contentDepth": "Snack / Normal / Deep-Dive",
             "conclusionType": "Q&A / Key Summary / Call to Action (CTA) / Thought-Provoking",
+            "shoppableKeyword": "If the topic is about a physical, purchasable product (e.g., smartphone, vitamins), provide the specific product name for shopping search. If it's a policy, finance, or abstract concept, leave it as null.",
             "coreFact": "A decisive, specific fact/number grounded in the input data",
             "viralTitles": {
               "curiosity": "[Title built via formula, ~60 chars]",
               "dataDriven": "[Title built via formula, ~60 chars]",
               "solution": "[Title built via formula, ~60 chars]"
             },
-            "metaDescription": "Meta description (~150-160 chars)",
+            "metaDescription": "Meta description (~150-160 chars, click-driving)",
+            "slug": "URL slug in lowercase kebab-case (letters/digits/hyphens only, 5-7 words, max 60 chars). Example: apple-watch-battery-replacement-tip",
+            "faq": [
+              {"q": "First likely search question a reader would ask", "a": "2-3 sentence answer summarizing the core point"},
+              {"q": "Second key question", "a": "Second answer"}
+            ],
             "subTopics": ["2-6 sub-topics dynamically based on depth", "Sub-topic 2", "Sub-topic 3..."],
             "coreEntities": ["2-6 proper nouns, jargon, or official agency names"],
             "lsiKeywords": ["lsi-1", "lsi-2", "lsi-3"],
@@ -103,7 +109,12 @@ tasks:
               "dataDriven": "[Title built via formula, ~60 chars]",
               "solution": "[Title built via formula, ~60 chars]"
             },
-            "metaDescription": "Meta description (~150-160 chars)",
+            "metaDescription": "Meta description (~150-160 chars, click-driving)",
+            "slug": "URL slug in lowercase kebab-case (letters/digits/hyphens only, 5-7 words, max 60 chars)",
+            "faq": [
+              {"q": "First likely search question a reader would ask", "a": "2-3 sentence answer"},
+              {"q": "Second key question", "a": "Second answer"}
+            ],
             "subTopics": ["2-6 sub-topics dynamically based on depth"],
             "coreEntities": ["2-6 core entities"],
             "lsiKeywords": ["lsi-1", "lsi-2"],
@@ -128,7 +139,8 @@ tasks:
       - "Search Intent Response (Problem-Solving): If the intro acknowledges anxiety, spend most of the body on concrete, actionable steps to avoid or solve the problem."
       - "GEO Optimization (BLUF Summary): Right after the hook, give a 2-3 sentence summary of the conclusion (must include {{coreFact}}). Vary the visual format each time (blockquote, bold, short paragraph)."
       - "Visual Hierarchy & Image Format Compliance: Use **Markdown Tables** when comparing complex numbers, but never force them. Provided image placeholders ({{context_url_1}}, {{context_url_2}}, {{context_url_3}}) MUST be inserted in this exact format at contextually appropriate points in the body: ![Alt Text](IMAGE_PLACEHOLDER_N \"english keyword\") (where N is 1, 2, or 3). **Outputting the placeholder string as plain text without markdown syntax, OR omitting the english keyword title, is a critical failure.**"
-      - "GEO Optimization (Dynamic Conclusion): Build the final H2 according to {{conclusionType}}. Don't always default to Q&A — use the heading and content style that matches the assigned conclusion type (CTA, Summary, Thought-Provoking)."
+      - "GEO Optimization (Dynamic Conclusion & Design): Build the final H2 according to {{conclusionType}}. Avoid plain text blocks; the conclusion MUST be visually distinct and designed as a box using blockquotes (>), markdown lists, or bold text."
+      - "Natural Affiliate Link Insertion: If there is a natural context in the body discussing the main keyword or related products, insert the variable '{{coupangLink}}' exactly once. Do not force it; only show it when it genuinely helps the reader."
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}
@@ -160,7 +172,8 @@ tasks:
       - "Visual Structure: Use **Markdown Tables** for procedures, settings, or comparisons to maximize scanability."
       - "Image Format Compliance: Provided image placeholders ({{context_url_1}}, {{context_url_2}}, {{context_url_3}}) MUST be inserted in this exact format at contextually appropriate points: ![Alt Text](IMAGE_PLACEHOLDER_N \"english keyword\") (where N is 1, 2, or 3). **Outputting the placeholder as plain text without markdown, OR omitting the english keyword title, is a critical failure.**"
       - "H2 Headings: Use {{subTopics}} to construct action-oriented headings."
-      - "GEO Optimization (Dynamic Conclusion): Build the final section based on {{conclusionType}} (e.g., Actionable CTA or Q&A)."
+      - "GEO Optimization (Dynamic Conclusion & Design): Build the final H2 according to {{conclusionType}}. Avoid plain text blocks; the conclusion MUST be visually distinct and designed as a box using blockquotes (>), markdown lists, or bold text."
+      - "Natural Affiliate Link Insertion: If there is a natural context in the body discussing the main keyword or related products, insert the variable '{{coupangLink}}' exactly once. Do not force it; only show it when it genuinely helps the reader."
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}
@@ -192,7 +205,8 @@ tasks:
       - "Visual Structure: MUST use **Markdown Tables** for spec or price comparisons."
       - "Image Format Compliance: Provided image placeholders ({{context_url_1}}, {{context_url_2}}, {{context_url_3}}) MUST be inserted in this exact format at contextually appropriate points: ![Alt Text](IMAGE_PLACEHOLDER_N \"english keyword\") (where N is 1, 2, or 3). **Outputting the placeholder as plain text without markdown, OR omitting the english keyword title, is a critical failure.**"
       - "H2 Headings: Use {{subTopics}} to construct headings that already imply a verdict."
-      - "GEO Optimization (Dynamic Conclusion): Build the final section based on {{conclusionType}} (e.g., Final Verdict or CTA)."
+      - "GEO Optimization (Dynamic Conclusion & Design): Build the final H2 according to {{conclusionType}}. Avoid plain text blocks; the conclusion MUST be visually distinct and designed as a box using blockquotes (>), markdown lists, or bold text."
+      - "Natural Affiliate Link Insertion: If there is a natural context in the body discussing the main keyword or related products, insert the variable '{{coupangLink}}' exactly once. Do not force it; only show it when it genuinely helps the reader."
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}

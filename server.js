@@ -9,17 +9,29 @@ import 'dotenv/config';
 import promptManager from './PromptManager.js';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import logger from './logger.js';
 import { exec } from 'child_process';
 import util from 'util';
 import { v2 as cloudinary } from 'cloudinary';
 
-// Cloudinary Configuration
-cloudinary.config({ 
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dvnespequ', 
-    api_key: process.env.CLOUDINARY_API_KEY || '519385854574946', 
-    api_secret: process.env.CLOUDINARY_API_SECRET || 'LsV21AkOqyYIj6oE_Y1eR_oi4zU'
+// Cloudinary Configuration: 폴백 시크릿 제거. 환경변수 누락 시 기동 단계에서 명확히 종료.
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    logger.error('[Cloudinary] CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET 환경변수가 모두 필요합니다. .env 파일을 확인하세요.');
+    process.exit(1);
+}
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
 });
+
+// === [v2.4] 운영 상수 ===
+const COUPANG_AFFILIATE_ID = 'AF7891014';
+const COUPANG_ELIGIBLE_CATEGORIES = ['Tech and IT', 'Finance', 'Life and Health'];
+const PUBLISHED_INDEX_FILE = path.join(process.cwd(), 'published-index.json');
+const PUBLISHED_INDEX_TTL_DAYS = 30;
+const MODELS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6시간
 
 const execPromise = util.promisify(exec);
 
@@ -38,8 +50,9 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // --- Dynamic Model Fetcher ---
 let cachedModels = null;
+let cachedModelsAt = 0;
 async function getBestModels() {
-    if (cachedModels) return cachedModels;
+    if (cachedModels && (Date.now() - cachedModelsAt) < MODELS_CACHE_TTL_MS) return cachedModels;
 
     try {
         const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
@@ -82,7 +95,8 @@ async function getBestModels() {
         
         // 너무 많은 모델을 시도할 필요는 없으므로 상위 10개만 유지
         cachedModels = models.slice(0, 10);
-        logger.info(`[System] Dynamically loaded ${cachedModels.length} models. Highest intelligence: ${cachedModels[0]}`);
+        cachedModelsAt = Date.now();
+        logger.info(`[System] Dynamically loaded ${cachedModels.length} models (TTL 6h). Highest intelligence: ${cachedModels[0]}`);
         return cachedModels;
 
     } catch (error) {
@@ -222,13 +236,26 @@ async function getOpenverseImage(keyword) {
 async function uploadToCloudinary(url) {
   if (!url) return null;
   try {
-      const uploadResult = await cloudinary.uploader.upload(url, {
-          folder: 'blogAutoPosting'
+      // 1. Download image to buffer to avoid Cloudinary fetching it directly and hitting Rate Limits (429)
+      const response = await axios.get(url, { responseType: 'arraybuffer' });
+      const buffer = Buffer.from(response.data, 'binary');
+
+      // 2. Upload to Cloudinary via stream
+      const uploadResult = await new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+              { folder: 'blogAutoPosting' },
+              (error, result) => {
+                  if (error) reject(error);
+                  else resolve(result);
+              }
+          );
+          uploadStream.end(buffer);
       });
-      const optimizeUrl = cloudinary.url(uploadResult.public_id, {
+
+      const optimizeUrl = stripCloudinaryQuery(cloudinary.url(uploadResult.public_id, {
           fetch_format: 'auto',
           quality: 'auto'
-      });
+      }));
       logger.success(`[Cloudinary] Uploaded image: ${optimizeUrl}`);
       return optimizeUrl;
   } catch (error) {
@@ -303,6 +330,189 @@ async function getRawRandomImage(keyword, isThumbnail = false, skipTranslation =
   // Final Fallback: 모든 API 실패 (Rate Limit, Network Error 등) 시 사용할 최후의 하드코딩 URL
   logger.error(`[Image Search] All API fetchers failed. Using hardcoded fallback URL.`);
   return 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=640&q=80';
+}
+
+// === [v2.4] Slug / Index / Internal Link / Coupang / Tag Helpers ===
+
+function sanitizeSlug(input) {
+    if (!input) return '';
+    return String(input)
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 60);
+}
+
+function makeUniqueSlug(slugCandidate, fallbackCandidate, contextSeed) {
+    const cleaned = sanitizeSlug(slugCandidate) || sanitizeSlug(fallbackCandidate) || 'post';
+    const hash = crypto
+        .createHash('md5')
+        .update(`${contextSeed || ''}|${Date.now()}|${Math.random()}`)
+        .digest('hex')
+        .slice(0, 4);
+    return `${cleaned}-${hash}`;
+}
+
+function readPublishedIndex() {
+    try {
+        if (!fs.existsSync(PUBLISHED_INDEX_FILE)) return [];
+        const raw = fs.readFileSync(PUBLISHED_INDEX_FILE, 'utf8').trim();
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+        logger.warn(`[Index] Read failed: ${e.message}`);
+        return [];
+    }
+}
+
+function prunePublishedIndex(arr) {
+    const cutoff = Date.now() - PUBLISHED_INDEX_TTL_DAYS * 24 * 60 * 60 * 1000;
+    return arr.filter(item => {
+        const t = item && item.publishedAt ? new Date(item.publishedAt).getTime() : NaN;
+        return Number.isFinite(t) && t >= cutoff;
+    });
+}
+
+function writePublishedIndex(arr) {
+    try {
+        fs.writeFileSync(PUBLISHED_INDEX_FILE, JSON.stringify(arr, null, 2), 'utf8');
+    } catch (e) {
+        logger.error(`[Index] Write failed: ${e.message}`);
+    }
+}
+
+function appendPublishedIndex(entry) {
+    let arr = readPublishedIndex();
+    arr = prunePublishedIndex(arr);
+    // 동일 slug 중복 방지: 기존 항목 제거 후 새로 append
+    arr = arr.filter(it => it.slug !== entry.slug);
+    arr.push(entry);
+    writePublishedIndex(arr);
+    logger.success(`[Index] Saved (${arr.length} entries, pruned >${PUBLISHED_INDEX_TTL_DAYS}d)`);
+}
+
+function buildRecentKeywordsContext(lang) {
+    const arr = prunePublishedIndex(readPublishedIndex()).filter(it => it.lang === lang);
+    if (!arr.length) return '';
+    const lines = arr.slice(-50).map(it => `- ${it.mainKeyword}`).join('\n');
+    return lang === 'ko'
+        ? `\n\n[최근 30일 발행 이력 (중복/유사 주제 금지)]\n${lines}\n`
+        : `\n\n[Published in the last 30 days (DO NOT repeat or paraphrase)]\n${lines}\n`;
+}
+
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
+    const candidates = prunePublishedIndex(readPublishedIndex()).filter(it =>
+        it.lang === lang &&
+        it.slug !== currentSlug &&
+        Array.isArray(it.coreEntities) && it.coreEntities.length > 0
+    );
+    if (!candidates.length) return markdown;
+
+    // 코드블록 / 인라인코드 / 이미지 / 기존 링크는 보호
+    const protections = [];
+    const stash = (str) => {
+        const idx = protections.length;
+        protections.push(str);
+        return `\u0000P${idx}\u0000`;
+    };
+    let working = markdown
+        .replace(/```[\s\S]*?```/g, m => stash(m))
+        .replace(/`[^`\n]+`/g, m => stash(m))
+        .replace(/!\[[^\]]*\]\([^)]+\)/g, m => stash(m))
+        .replace(/\[[^\]]+\]\([^)]+\)/g, m => stash(m));
+
+    let injected = 0;
+    const MAX_LINKS = 3;
+    const linked = new Set();
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+
+    for (const cand of shuffled) {
+        if (injected >= MAX_LINKS) break;
+        for (const ent of cand.coreEntities) {
+            if (injected >= MAX_LINKS) break;
+            const ek = String(ent || '').trim();
+            if (!ek || ek.length < 2 || linked.has(ek)) continue;
+            const re = new RegExp(escapeRegex(ek));
+            if (!re.test(working)) continue;
+            const url = `${baseUrl.replace(/\/$/, '')}/blog/${cand.slug}/`;
+            working = working.replace(re, `[${ek}](${url})`);
+            linked.add(ek);
+            injected++;
+            break;
+        }
+    }
+
+    // 보호 블록 복원
+    working = working.replace(/\u0000P(\d+)\u0000/g, (_, i) => protections[Number(i)] || '');
+    if (injected > 0) logger.success(`[InternalLinks] Injected ${injected} link(s)`);
+    return working;
+}
+
+function buildCoupangBox(shoppableKeyword, category, lang) {
+    if (lang !== 'ko') return '';
+    if (!shoppableKeyword || shoppableKeyword.trim() === '' || shoppableKeyword.toLowerCase() === 'null') return '';
+    if (!COUPANG_ELIGIBLE_CATEGORIES.includes(category)) return '';
+    const q = encodeURIComponent(shoppableKeyword.trim());
+    const url = `https://www.coupang.com/np/search?q=${q}&channel=affiliate&trackingCode=${COUPANG_AFFILIATE_ID}`;
+    return [
+        '',
+        '---',
+        '',
+        '### 관련 상품 한눈에 보기',
+        '',
+        `[**쿠팡에서 "${shoppableKeyword.trim()}" 관련 상품 보러가기 →**](${url})`,
+        '',
+        '> 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 일정액의 수수료를 제공받습니다.',
+        ''
+    ].join('\n');
+}
+
+function buildExpandedTags(postPlan) {
+    const collected = [];
+    const push = (v) => {
+        if (!v) return;
+        const s = String(v).trim().replace(/\s+/g, ' ');
+        if (s.length < 2 || s.length > 30) return;
+        if (collected.includes(s)) return;
+        // 너무 일반적인 단어 차단
+        if (/^(한국|오늘|뉴스|정보|이슈)$/i.test(s)) return;
+        collected.push(s);
+    };
+    push(postPlan?.mainKeyword);
+    if (Array.isArray(postPlan?.seoKeywords)) postPlan.seoKeywords.forEach(push);
+    if (Array.isArray(postPlan?.lsiKeywords)) postPlan.lsiKeywords.slice(0, 3).forEach(push);
+    if (Array.isArray(postPlan?.coreEntities)) postPlan.coreEntities.slice(0, 3).forEach(push);
+    return collected.slice(0, 8);
+}
+
+function stripCloudinaryQuery(url) {
+    if (!url || typeof url !== 'string') return url;
+    if (!url.includes('res.cloudinary.com')) return url;
+    return url.split('?')[0];
+}
+
+// 본문에서 Q&A 패턴 추출 → frontmatter faq: 배열 후보
+function extractFaqFromMarkdown(markdown) {
+    if (!markdown) return [];
+    const faqs = [];
+    // 패턴: "**Q. ...**" 다음 줄들에 "**A.** ..." 형태
+    const re = /\*\*Q\.\s*([^*\n]+?)\*\*\s*\n+\*\*A\.\*\*\s*([\s\S]*?)(?=\n\s*\n\*\*Q\.|\n\s*\n#{1,6}\s|\n\s*---|\n*$)/g;
+    let m;
+    while ((m = re.exec(markdown)) !== null) {
+        const q = m[1].trim();
+        const a = m[2].trim().replace(/\s+/g, ' ');
+        if (q && a) faqs.push({ q, a });
+        if (faqs.length >= 6) break;
+    }
+    return faqs;
 }
 
 // --- API Fetch Retry Helper ---
@@ -707,6 +917,8 @@ app.post('/api/analyze', async (req, res) => {
             topic_count: topicCount
           });
       }
+      // [v2.4] 카니발 방지: 최근 30일 발행 키워드를 negative context로 주입
+      prompt += buildRecentKeywordsContext(lang);
 
       const result = await model.generateContent(prompt);
       const response = await result.response;
@@ -735,12 +947,8 @@ app.post('/api/generate-post', async (req, res) => {
   const { postPlan, region = 'KR' } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
 
-  const tags = (() => {
-    const raw = Array.isArray(postPlan?.seoKeywords) ? postPlan.seoKeywords.filter(Boolean) : [];
-    if (raw.length) return raw;
-    const mk = (postPlan?.mainKeyword || '').toString().trim();
-    return mk ? [mk] : [];
-  })();
+  // [v2.4] 태그 자동 확장: mainKeyword + seoKeywords + lsi + coreEntities → 4~8개
+  const tags = buildExpandedTags(postPlan);
 
   const modelsToTry = await getBestModels();
   
@@ -872,22 +1080,68 @@ app.post('/api/generate-post', async (req, res) => {
   // 4. Hugo Front-matter 구성
   let selectedCategory = postPlan.category || "Tech and IT";
   selectedCategory = selectedCategory.replace(/&/g, 'and').replace(/\s+/g, ' ').trim();
-  
+
   const currentDate = new Date().toISOString().split('T')[0];
+
+  // [v2.4] 슬러그 결정: AI가 생성한 slug → imageSearchKeywords[0] → mainKeyword(영문화 fallback)
+  const slugSource = postPlan.slug
+      || (Array.isArray(postPlan.imageSearchKeywords) && postPlan.imageSearchKeywords[0])
+      || postPlan.mainKeyword
+      || 'post';
+  const fallbackSource = postPlan.mainKeyword || selectedTitle;
+  const finalSlug = makeUniqueSlug(slugSource, fallbackSource, `${postPlan.mainKeyword}|${selectedCategory}`);
+
+  // [v2.4] 본문 후처리: ① 인터널 링크 자동 삽입 → ② 쿠팡 파트너스 박스
+  const baseUrl = 'https://gunbin.github.io';
+  bodyMarkdown = injectInternalLinks(bodyMarkdown, finalSlug, lang, baseUrl);
+  const coupangBox = buildCoupangBox(postPlan.shoppableKeyword, selectedCategory, lang);
+  if (bodyMarkdown.includes('{{coupangLink}}')) {
+      if (coupangBox) {
+          bodyMarkdown = bodyMarkdown.replace('{{coupangLink}}', '\n' + coupangBox + '\n');
+      } else {
+          // 쿠팡 박스가 생성되지 않으면 (shoppableKeyword 없음 또는 비대상 카테고리) 찌꺼기 텍스트 제거
+          bodyMarkdown = bodyMarkdown.replace('{{coupangLink}}', '');
+      }
+  }
+
+  // [v2.4] FAQ 추출 → frontmatter faq: 배열 (Hugo head에서 JSON-LD로 변환됨)
+  const aiFaq = Array.isArray(postPlan.faq) ? postPlan.faq.filter(x => x && x.q && x.a) : [];
+  const extractedFaq = extractFaqFromMarkdown(bodyMarkdown);
+  const faqList = aiFaq.length ? aiFaq : extractedFaq;
+
+  const yamlEscape = (s) => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+  let faqYaml = '';
+  if (faqList.length) {
+      const items = faqList.slice(0, 6).map(f => `  - q: "${yamlEscape(f.q)}"\n    a: "${yamlEscape(f.a)}"`).join('\n');
+      faqYaml = `faq:\n${items}\n`;
+  }
 
   const hugoHeader = `---
 author: "TrendRadar"
-title: "${selectedTitle.replace(/"/g, '\\"')}"
+title: "${yamlEscape(selectedTitle)}"
 date: ${currentDate}
-tags: [${tags.map(t => `"${String(t).replace(/"/g, '\\"')}"`).join(', ')}]
-description: "${(postPlan.metaDescription || '').replace(/"/g, '\\"')}"
-categories: ["${selectedCategory}"]
+lastmod: ${currentDate}
+slug: "${finalSlug}"
+tags: [${tags.map(t => `"${yamlEscape(t)}"`).join(', ')}]
+description: "${yamlEscape(postPlan.metaDescription || '')}"
+categories: ["${yamlEscape(selectedCategory)}"]
 thumbnail: "${thumbnailUrl}"
----
+${faqYaml}---
 
 `;
 
-  return res.json({ markdown: hugoHeader + bodyMarkdown });
+  // [v2.4] 클라이언트가 publish/push 시 함께 보낼 수 있도록 인덱스 메타도 응답에 포함
+  const indexEntry = {
+    slug: finalSlug,
+    mainKeyword: postPlan.mainKeyword || '',
+    lsiKeywords: Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords : [],
+    coreEntities: Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities : [],
+    category: selectedCategory,
+    lang
+  };
+
+  return res.json({ markdown: hugoHeader + bodyMarkdown, indexEntry });
 });
 
 async function processMarkdownImagesToCloudinary(markdown) {
@@ -926,26 +1180,39 @@ async function processMarkdownImagesToCloudinary(markdown) {
   return processedMarkdown;
 }
 
+// frontmatter에서 slug 파싱 (publish/push 시 파일명에 사용)
+function extractSlugFromMarkdown(markdown) {
+  const m = markdown.match(/^---[\s\S]*?\nslug:\s*"([^"]+)"/);
+  return m ? m[1] : null;
+}
+
 app.post('/api/publish', async (req, res) => {
-  let { markdown, region = 'KR' } = req.body;
+  let { markdown, region = 'KR', indexEntry } = req.body;
   if (!markdown) return res.status(400).json({ error: 'Markdown content missing' });
-  
+
   // 배포 시점에 일괄적으로 Cloudinary에 업로드 후 치환
   markdown = await processMarkdownImagesToCloudinary(markdown);
 
   const lang = region === 'US' ? 'en' : 'ko';
-  const timestamp = Date.now();
-  const filename = `trend-${timestamp}.md`;
-  
+  // [v2.4] 파일명: slug 기반 (frontmatter 우선) → fallback: timestamp
+  const slug = (indexEntry && indexEntry.slug) || extractSlugFromMarkdown(markdown) || `trend-${Date.now()}`;
+  const filename = `${slug}.md`;
+
   const targetDir = path.join(process.cwd(), '..', 'autoHugoBlog', 'content', lang, 'blog');
   const filePath = path.join(targetDir, filename);
-  
+
   try {
       if (!fs.existsSync(targetDir)) {
           fs.mkdirSync(targetDir, { recursive: true });
       }
       fs.writeFileSync(filePath, markdown, 'utf8');
       logger.success(`[Publish] Saved markdown file to ${filePath}`);
+
+      // [v2.4] 카니발 방지 인덱스 append (30일 prune 동시 수행)
+      if (indexEntry && indexEntry.slug) {
+          appendPublishedIndex({ ...indexEntry, lang, publishedAt: new Date().toISOString() });
+      }
+
       res.json({ success: true, filePath: `/content/${lang}/blog/${filename}` });
   } catch (error) {
       logger.error("[Publish Error]", error.message);
@@ -954,9 +1221,9 @@ app.post('/api/publish', async (req, res) => {
 });
 
 app.post('/api/push-github', async (req, res) => {
-  let { markdown, region = 'KR' } = req.body;
+  let { markdown, region = 'KR', indexEntry } = req.body;
   if (!markdown) return res.status(400).json({ error: 'Markdown content missing' });
-  
+
   // 깃허브 푸시 시점에 일괄적으로 Cloudinary에 업로드 후 치환
   markdown = await processMarkdownImagesToCloudinary(markdown);
 
@@ -966,20 +1233,21 @@ app.post('/api/push-github', async (req, res) => {
   }
 
   const lang = region === 'US' ? 'en' : 'ko';
-  const timestamp = Date.now();
-  const filename = `trend-${timestamp}.md`;
+  // [v2.4] 파일명: slug 기반 (frontmatter 우선) → fallback: timestamp
+  const slug = (indexEntry && indexEntry.slug) || extractSlugFromMarkdown(markdown) || `trend-${Date.now()}`;
+  const filename = `${slug}.md`;
   const repoOwner = 'Gunbin';
   const repoName = 'gunbin.github.io';
   // GitHub API requires the exact file path inside the repository
   const githubFilePath = `content/${lang}/blog/${filename}`;
   const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${githubFilePath}`;
-  
+
   try {
       logger.process(`[GitHub Push] Pushing directly to GitHub via REST API...`);
-      
+
       // Base64 encode the markdown content
       const base64Content = Buffer.from(markdown, 'utf8').toString('base64');
-      
+
       const response = await axios.put(apiUrl, {
           message: `Auto-post: Add trend content ${filename}`,
           content: base64Content,
@@ -992,12 +1260,18 @@ app.post('/api/push-github', async (req, res) => {
       });
 
       logger.success(`[GitHub Push] Successfully pushed to GitHub: ${response.data.content.html_url}`);
+
+      // [v2.4] 카니발 방지 인덱스 append (30일 prune 동시 수행)
+      if (indexEntry && indexEntry.slug) {
+          appendPublishedIndex({ ...indexEntry, lang, publishedAt: new Date().toISOString() });
+      }
+
       res.json({ success: true, filePath: githubFilePath, url: response.data.content.html_url });
   } catch (error) {
       logger.error("[GitHub Push Error]", error.response?.data?.message || error.message);
-      res.status(500).json({ 
-          error: 'Failed to push to GitHub directly', 
-          details: error.response?.data?.message || error.message 
+      res.status(500).json({
+          error: 'Failed to push to GitHub directly',
+          details: error.response?.data?.message || error.message
       });
   }
 });

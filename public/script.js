@@ -1,6 +1,8 @@
 let timerInterval;
 let timeRemaining = 30000;
 let currentTrendsData = null;
+let currentGeneratedMarkdown = null;
+let currentGeneratedIndexEntry = null;
 let APP_CONFIG = {
     interval: 30000,
     sources: { 
@@ -606,6 +608,8 @@ async function generateFullPost(postPlan) {
         
         const result = await res.json();
         currentGeneratedMarkdown = result.markdown;
+        // [v2.4] 카니발 방지 인덱스용 메타. publish/push 시 함께 전송.
+        currentGeneratedIndexEntry = result.indexEntry || null;
         // Use marked to parse markdown into HTML
         content.innerHTML = marked.parse(result.markdown);
     } catch (error) {
@@ -662,7 +666,8 @@ document.getElementById('publish-post').addEventListener('click', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 markdown: currentGeneratedMarkdown,
-                region: APP_CONFIG.region || 'KR'
+                region: APP_CONFIG.region || 'KR',
+                indexEntry: currentGeneratedIndexEntry
             })
         });
         const result = await res.json();
@@ -693,7 +698,8 @@ document.getElementById('push-github-post').addEventListener('click', async () =
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 markdown: currentGeneratedMarkdown,
-                region: APP_CONFIG.region || 'KR'
+                region: APP_CONFIG.region || 'KR',
+                indexEntry: currentGeneratedIndexEntry
             })
         });
         const result = await res.json();

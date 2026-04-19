@@ -21,3 +21,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# 카니발 방지 인덱스 (런타임 생성)
+published-index.json

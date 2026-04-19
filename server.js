@@ -163,7 +163,7 @@ async function getPexelsImage(keyword) {
 }
 
 // 2. Pixabay (Photos, Illustrations, Vectors)
-async function getPixabayImage(keyword, type = 'all') {
+async function getPixabayImage(keyword, type = 'all', usedUrls = new Set()) {
   if (!process.env.PIXABAY_API_KEY) return null;
   try {
     const res = await axios.get(`https://pixabay.com/api/`, {
@@ -171,27 +171,38 @@ async function getPixabayImage(keyword, type = 'all') {
         key: process.env.PIXABAY_API_KEY,
         q: keyword,
         image_type: type,
-        per_page: 5,
+        per_page: 30, // 후보군을 30개로 확장하여 중복 확률을 낮춤
         safesearch: 'true'
       }
     });
     if (res.data.hits && res.data.hits.length > 0) {
-      const randomIndex = Math.floor(Math.random() * res.data.hits.length);
-      // Use webformatURL (max 640px) for better loading speed
-      return res.data.hits[randomIndex].webformatURL;
+      // 섞인 후보군 생성
+      const candidates = [...res.data.hits].sort(() => Math.random() - 0.5);
+      for (const hit of candidates) {
+        const url = hit.webformatURL;
+        // 아직 본문에 사용되지 않은 신선한 URL만 선택
+        if (!usedUrls.has(url)) {
+          usedUrls.add(url); // 선택됨과 동시에 사용 목록에 기록
+          return url;
+        }
+      }
+
+      // 만약 30장이 전부 다 쓰였다면 (극히 드문 경우), 어쩔 수 없이 첫 번째 이미지를 반환
+      const fallbackUrl = res.data.hits[0].webformatURL;
+      usedUrls.add(fallbackUrl);
+      return fallbackUrl;
     }
-    
+
     // Fallback: If no results, try searching with only the first two words
     const simplified = keyword.split(' ').slice(0, 2).join(' ');
     if (simplified !== keyword) {
-      return await getPixabayImage(simplified, type);
+      return await getPixabayImage(simplified, type, usedUrls);
     }
   } catch (error) {
     logger.error('Pixabay API Error', error.message);
   }
   return null;
 }
-
 // 3. Openverse (Creative Commons)
 async function getOpenverseImage(keyword) {
   try {
@@ -265,14 +276,14 @@ async function uploadToCloudinary(url) {
 }
 
 // --- Master Image Dispatcher ---
-async function getRandomImage(keyword, isThumbnail = false, skipTranslation = false) {
+async function getRandomImage(keyword, isThumbnail = false, skipTranslation = false, usedUrls = new Set()) {
   // 포스팅 생성 시에는 원본 CDN URL을 반환하여 Cloudinary 용량을 아낍니다.
   // 실제 업로드(save local, push to github) 시점에 일괄 변환합니다.
-  const rawUrl = await getRawRandomImage(keyword, isThumbnail, skipTranslation);
+  const rawUrl = await getRawRandomImage(keyword, isThumbnail, skipTranslation, usedUrls);
   return rawUrl;
 }
 
-async function getRawRandomImage(keyword, isThumbnail = false, skipTranslation = false) {
+async function getRawRandomImage(keyword, isThumbnail = false, skipTranslation = false, usedUrls = new Set()) {
   let searchQuery = keyword;
   if (Array.isArray(keyword)) {
     searchQuery = keyword[Math.floor(Math.random() * keyword.length)];
@@ -289,8 +300,8 @@ async function getRawRandomImage(keyword, isThumbnail = false, skipTranslation =
   
   // 1순위: 카툰풍/일러스트 이미지 (Pixabay, Openverse)
   const primarySources = [
-    () => getPixabayImage(searchQuery, 'illustration'),
-    () => getPixabayImage(searchQuery, 'vector'),
+    () => getPixabayImage(searchQuery, 'illustration', usedUrls),
+    () => getPixabayImage(searchQuery, 'vector', usedUrls),
     () => getOpenverseImage(searchQuery)
   ];
 
@@ -315,7 +326,7 @@ async function getRawRandomImage(keyword, isThumbnail = false, skipTranslation =
   // 3순위 폴백: 특정 키워드로 모든 API 실패 시, 범용적인 추상 배경(일러스트) 검색
   logger.warn(`[Image Search] No specific image found. Trying generic illustration fallback...`);
   const fallbackSources = [
-    () => getPixabayImage('abstract pattern', 'vector'),
+    () => getPixabayImage('abstract pattern', 'vector', usedUrls),
     () => getOpenverseImage('abstract')
   ];
 
@@ -1023,6 +1034,8 @@ app.post('/api/generate-post', async (req, res) => {
       return res.status(500).json({ error: '본문 생성 실패' });
   }
 
+  const usedImageUrls = new Set(); // 포스팅 단위 중복 이미지 방지용 Set
+
   // 2. 썸네일 생성 (title 기반)
   const selectedTitle = postPlan.viralTitles ? 
       (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
@@ -1040,7 +1053,7 @@ app.post('/api/generate-post', async (req, res) => {
   }
 
   logger.process(`[Image Fetch] Fetching thumbnail for keyword: ${thumbnailSearchKeyword} (Title: ${selectedTitle})`);
-  const thumbnailUrl = await getRandomImage(thumbnailSearchKeyword, true, skipThumbnailTranslation);
+  const thumbnailUrl = await getRandomImage(thumbnailSearchKeyword, true, skipThumbnailTranslation, usedImageUrls);
 
   // 3. 본문 내 이미지 치환 (Alt 텍스트 + 영문 키워드 기반)
   // [Case A] 마크다운 문법을 지킨 경우: ![alt](URL "title")
@@ -1057,7 +1070,7 @@ app.post('/api/generate-post', async (req, res) => {
       if (placeholderUrl.includes('IMAGE_PLACE')) {
           const searchKeyword = englishKeyword || altText;
           const skipTranslation = !!englishKeyword || region === 'US';
-          const realImageUrl = await getRandomImage(searchKeyword, false, skipTranslation);
+          const realImageUrl = await getRandomImage(searchKeyword, false, skipTranslation, usedImageUrls);
           
           if (realImageUrl) {
               const replacement = `![${altText}](${realImageUrl})`;
@@ -1083,7 +1096,7 @@ app.post('/api/generate-post', async (req, res) => {
           skipFallbackTranslation = true;
       }
 
-      const realImageUrl = await getRandomImage(fallbackSearchKeyword, false, skipFallbackTranslation);
+      const realImageUrl = await getRandomImage(fallbackSearchKeyword, false, skipFallbackTranslation, usedImageUrls);
       if (realImageUrl) {
           // 이미지 태그로 감싸서 치환
           const replacement = `\n\n![${postPlan.mainKeyword}](${realImageUrl})\n\n`;

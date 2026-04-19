@@ -41,7 +41,7 @@ promptManager.getPrompt('trend_analysis', lang, {
 | `fss` | `getFssAlerts` | `rank`, `keyword`, `url`, `pubDate` |
 | `policy` | `getPolicyBriefing` | `rank`, `keyword`, `url`, `pubDate` |
 | `ppomppu` | `getPpomppuHotDeals` | `rank`, `keyword`, `url` |
-| `fmkorea` | `getFmkoreaBest` | `rank`, `keyword`, `url` |
+| `instiz` | `getInstizHot` | `rank`, `keyword`, `url` |
 
 공통: 최상단에 **`timestamp`** (ISO 문자열).
 
@@ -92,8 +92,8 @@ promptManager.getPrompt('trend_analysis', lang, {
   "ppomppu": [
     { "rank": 1, "keyword": "[정보] 뽐뿌 게시글 제목...", "url": "https://www.ppomppu.co.kr/zboard/..." }
   ],
-  "fmkorea": [
-    { "rank": 1, "keyword": "[유머] 펨코 베스트 제목...", "url": "https://www.fmkorea.com/best2/..." }
+  "instiz": [
+    { "rank": 1, "keyword": "[인스티즈] 인티 베스트 제목...", "url": "https://www.instiz.net/pt/..." }
   ]
 }
 ```

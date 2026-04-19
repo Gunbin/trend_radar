@@ -6,7 +6,7 @@ let currentGeneratedIndexEntry = null;
 let APP_CONFIG = {
     interval: 30000,
     sources: { 
-        KR: { google: true, nate: true, signal: true, fss: true, policy: true, ppomppu: true, fmkorea: true },
+        KR: { google: true, nate: true, signal: true, fss: true, policy: true, ppomppu: true, instiz: true },
         US: { google: true, reddit: true, redditScams: true, redditPoverty: true, redditFrugal: true, yahoo: true, buzzfeed: true }
     },
     topicCount: 3,
@@ -31,6 +31,7 @@ function loadSettings() {
                     ...APP_CONFIG.sources.KR,
                     ...loadedKR
                 };
+                delete APP_CONFIG.sources.KR.fmkorea; // Remove deprecated source from localStorage
                 
                 const loadedUS = parsed.sources.US || {};
                 APP_CONFIG.sources.US = {
@@ -57,7 +58,7 @@ function syncUIToSettings() {
     document.getElementById('src-fss').checked = APP_CONFIG.sources.KR.fss !== false;
     document.getElementById('src-policy').checked = APP_CONFIG.sources.KR.policy !== false;
     document.getElementById('src-ppomppu').checked = APP_CONFIG.sources.KR.ppomppu !== false;
-    document.getElementById('src-fmkorea').checked = APP_CONFIG.sources.KR.fmkorea !== false;
+    document.getElementById('src-instiz').checked = APP_CONFIG.sources.KR.instiz !== false;
     
     document.getElementById('src-google-us').checked = APP_CONFIG.sources.US.google;
     document.getElementById('src-reddit').checked = APP_CONFIG.sources.US.reddit;
@@ -85,7 +86,7 @@ function saveSettings() {
     APP_CONFIG.sources.KR.fss = document.getElementById('src-fss').checked;
     APP_CONFIG.sources.KR.policy = document.getElementById('src-policy').checked;
     APP_CONFIG.sources.KR.ppomppu = document.getElementById('src-ppomppu').checked;
-    APP_CONFIG.sources.KR.fmkorea = document.getElementById('src-fmkorea').checked;
+    APP_CONFIG.sources.KR.instiz = document.getElementById('src-instiz').checked;
     
     APP_CONFIG.sources.US.google = document.getElementById('src-google-us').checked;
     APP_CONFIG.sources.US.reddit = document.getElementById('src-reddit').checked;
@@ -115,7 +116,7 @@ function updatePanelVisibility() {
     const isKR = APP_CONFIG.region === 'KR';
     
     // Clear all lists when switching to avoid stale data display
-    const lists = ['google-list', 'signal-list', 'namu-list', 'fss-list', 'policy-list', 'ppomppu-list', 'fmkorea-list', 'reddit-list', 'reddit-scams-list', 'reddit-poverty-list', 'reddit-frugal-list', 'yahoo-list', 'buzzfeed-list'];
+    const lists = ['google-list', 'signal-list', 'namu-list', 'fss-list', 'policy-list', 'ppomppu-list', 'instiz-list', 'reddit-list', 'reddit-scams-list', 'reddit-poverty-list', 'reddit-frugal-list', 'yahoo-list', 'buzzfeed-list'];
     lists.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<li class="loading">SWITCHING REGION...</li>';
@@ -128,7 +129,7 @@ function updatePanelVisibility() {
         document.querySelector('.fss-panel').style.display = APP_CONFIG.sources.KR.fss ? 'flex' : 'none';
         document.querySelector('.policy-panel').style.display = APP_CONFIG.sources.KR.policy ? 'flex' : 'none';
         document.querySelector('.ppomppu-panel').style.display = APP_CONFIG.sources.KR.ppomppu ? 'flex' : 'none';
-        document.querySelector('.fmkorea-panel').style.display = APP_CONFIG.sources.KR.fmkorea ? 'flex' : 'none';
+        document.querySelector('.instiz-panel').style.display = APP_CONFIG.sources.KR.instiz ? 'flex' : 'none';
         
         document.querySelector('.reddit-panel').style.display = 'none';
         document.querySelector('.reddit-scams-panel').style.display = 'none';
@@ -147,7 +148,7 @@ function updatePanelVisibility() {
         document.querySelector('.fss-panel').style.display = 'none';
         document.querySelector('.policy-panel').style.display = 'none';
         document.querySelector('.ppomppu-panel').style.display = 'none';
-        document.querySelector('.fmkorea-panel').style.display = 'none';
+        document.querySelector('.instiz-panel').style.display = 'none';
         
         document.querySelector('.reddit-panel').style.display = APP_CONFIG.sources.US.reddit ? 'flex' : 'none';
         document.querySelector('.reddit-scams-panel').style.display = APP_CONFIG.sources.US.redditScams !== false ? 'flex' : 'none';
@@ -180,7 +181,7 @@ async function fetchTrends() {
         fss: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fss) ? rawData.fss : [],
         policy: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.policy) ? rawData.policy : [],
         ppomppu: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.ppomppu) ? rawData.ppomppu : [],
-        fmkorea: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fmkorea) ? rawData.fmkorea : [],
+        instiz: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.instiz) ? rawData.instiz : [],
         reddit: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.reddit) ? rawData.reddit : [],
         redditScams: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditScams) ? rawData.redditScams : [],
         redditPoverty: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditPoverty) ? rawData.redditPoverty : [],
@@ -303,8 +304,8 @@ async function fetchTrends() {
         `);
     }
 
-    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fmkorea) {
-        renderList('fmkorea-list', data.fmkorea, (item) => `
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.instiz) {
+        renderList('instiz-list', data.instiz, (item) => `
             <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
               <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
               <div class="content">
@@ -415,7 +416,7 @@ async function fetchTrends() {
       ...(data.fss || []).map(i => i.keyword),
       ...(data.policy || []).map(i => i.keyword),
       ...(data.ppomppu || []).map(i => i.keyword),
-      ...(data.fmkorea || []).map(i => i.keyword)
+      ...(data.instiz || []).map(i => i.keyword)
     ] : [
       ...(data.google || []).map(i => i.keyword),
       ...(data.reddit || []).map(i => i.keyword),

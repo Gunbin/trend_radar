@@ -29,8 +29,8 @@
     *   **내용:** 핫딜이 아닌 "오래 두고 보는" 실생활 꿀팁, 가성비 노하우. (예: 스마트폰 요금제 절약법, 자동차 연비 팁)
 
 ### 3. 바이럴 & 가십 (Viral & Entertainment)
-*   **[소스 7] FMKorea Best (펨코 포텐)**
-    *   **방식:** `HTML 크롤링 (Cheerio)` (fmkorea.com/best2)
+*   **[소스 7] Instiz Hot (인스티즈 핫게시판)**
+    *   **방식:** `HTML 크롤링 (Cheerio)` (instiz.net/hot.htm?sid=pt)
     *   **내용:** 현재 인터넷 커뮤니티에서 가장 많이 공유되고 있는 유머, 밈(Meme), 화제성 짤방 등.
 
 ---
@@ -72,7 +72,7 @@
 | :--- | :--- | :--- |
 | **JSON API** | `axios.get` | Reddit, Nate, Signal.bz 등. 서버 부하가 적고 파싱이 빠르며 가장 안정적임. |
 | **RSS Feed** | `xml2js` 파서 | Google Trends, Yahoo News, Policy Briefing 등. 구조화된 XML을 JSON 객체로 변환하여 사용. |
-| **Web Crawling** | `cheerio`, `iconv-lite` | FSS, Ppomppu, FMKorea 등. API나 RSS를 제공하지 않는 사이트의 HTML DOM 구조를 직접 분석하여 긁어옴. 한글 인코딩(EUC-KR) 처리 포함. |
+| **Web Crawling** | `cheerio`, `iconv-lite` | FSS, Ppomppu, Instiz 등. API나 RSS를 제공하지 않는 사이트의 HTML DOM 구조를 직접 분석하여 긁어옴. 한글 인코딩(EUC-KR) 처리 포함. |
 
 **💡 개발자 노트:**
 * 모든 소스는 `fetchWithRetry` 헬퍼 함수를 통해 래핑되어 있어 일시적인 네트워크 오류 발생 시 자동 재시도합니다.

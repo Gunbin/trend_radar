@@ -14,6 +14,7 @@ import logger from './logger.js';
 import { exec } from 'child_process';
 import util from 'util';
 import { v2 as cloudinary } from 'cloudinary';
+import { gotScraping } from 'got-scraping';
 
 // Cloudinary Configuration: 폴백 시크릿 제거. 환경변수 누락 시 기동 단계에서 명확히 종료.
 if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
@@ -817,48 +818,49 @@ async function getPpomppuHotDeals() {
   });
 }
 
-// 9. 바이럴 커뮤니티 베스트 (한국 전용 - 펨코 크롤링, DC는 차단이 심해 대체)
-async function getFmkoreaBest() {
-  return fetchWithRetry('FMKorea Best', async () => {
-    // 펨코 430 에러(봇 차단) 방지를 위해 요청 전 랜덤 지연 (0~2초)
-    await new Promise(r => setTimeout(r, Math.random() * 2000));
-
-    const res = await axios.get('https://www.fmkorea.com/best2', {
-        headers: { 
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Referer': 'https://www.fmkorea.com/',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'upgrade-insecure-requests': '1'
+// 9. 바이럴 커뮤니티 베스트 (한국 전용 - 인스티즈 핫게시판 크롤링, 펨코 우회)
+async function getInstizHot() {
+  return fetchWithRetry('Instiz Hot', async () => {
+    // 1. got-scraping을 사용하여 브라우저 지문 위장
+    const { body } = await gotScraping({
+        url: 'https://www.instiz.net/hot.htm?sid=pt',
+        headerGeneratorOptions: {
+            browsers: [
+                { name: 'chrome', minVersion: 110 },
+                { name: 'safari', minVersion: 15 },
+                { name: 'firefox', minVersion: 110 }
+            ],
+            devices: ['desktop', 'mobile'], 
+            locales: ['ko-KR', 'ko']
         },
-        timeout: 10000
+        headers: { 
+            'Referer': 'https://www.google.com/search?q=%EC%9D%B8%EC%8A%A4%ED%8B%B0%EC%A6%88',
+        },
+        timeout: {
+            request: 10000
+        }
     });
-    const $ = cheerio.load(res.data);
+    const $ = cheerio.load(body);
     const bests = [];
 
-    // 전역 .title 선택은 다른 블록 제목까지 섞일 수 있어, best2 링크만 엄격히 허용
-    $('.title').each((i, el) => {        if (bests.length >= 10) return false;
+    // 인스티즈 리스트 라인 추출
+    $('.result_search a, .realchart_item_a').each((i, el) => {
+        if (bests.length >= 10) return false;
         
-        const anchor = $(el).find('a').first();
-        let link = anchor.attr('href') || '';
-        const isBest2Link = link.includes('/best2/') || link.includes('mid=best2');
-        if (!isBest2Link) return true; // continue
-
-        const parentLi = anchor.closest('li');
-        // 펨코 게시판 카테고리 추출 (예: 유머, 포텐 등)
-        let category = parentLi.find('.category').text().trim().replace(/[\[\]\/]/g, '').trim() || '이슈';
+        let link = $(el).attr('href') || '';
+        if (link.startsWith('/')) link = 'https://www.instiz.net' + link;
         
-        // 펨코 제목의 댓글수 [123] 제거
-        let title = anchor.text().replace(/\[\d+\]/g, '').trim();
-        if (link.startsWith('/')) link = 'https://www.fmkorea.com' + link;
+        // title은 자식 요소인 h3.search_title에 있거나 (result_search), 그냥 text()에 있음 (realchart_item_a)
+        let titleNode = $(el).find('.search_title');
+        let title = titleNode.length ? titleNode.text() : $(el).text();
         
-        if (title && !title.includes('공지')) {
+        title = title.replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim(); // 댓글수 제거 및 연속 공백 제거
+        
+        // 글 제목 필터링
+        if (title && !title.includes('공지') && !link.includes('memo')) {
             bests.push({
                 rank: bests.length + 1,
-                keyword: `[${category}] ${title}`, // AI가 맥락을 파악할 수 있도록 카테고리 부착
+                keyword: `[인스티즈] ${title}`,
                 url: link
             });
         }
@@ -899,21 +901,20 @@ app.get('/api/trends', async (req, res) => {
         google, reddit, yahoo, redditScams, redditPoverty, redditFrugal, buzzfeed
     });
   } else {
-    const [google, signal, namu, fss, policy, ppomppu, fmkorea] = await Promise.all([
+    const [google, signal, namu, fss, policy, ppomppu, instiz] = await Promise.all([
       checkSource('google') ? getGoogleTrends('KR') : Promise.resolve([]),
       checkSource('nate') ? getSignalTrends() : Promise.resolve([]),
       checkSource('signal') ? getNamuwikiTrends() : Promise.resolve([]),
       checkSource('fss') ? getFssAlerts() : Promise.resolve([]),
       checkSource('policy') ? getPolicyBriefing() : Promise.resolve([]),
       checkSource('ppomppu') ? getPpomppuHotDeals() : Promise.resolve([]),
-      checkSource('fmkorea') ? getFmkoreaBest() : Promise.resolve([])
+      checkSource('instiz') ? getInstizHot() : Promise.resolve([])
     ]);
-    res.json({ 
-        timestamp: new Date().toISOString(), 
-        region, 
-        google, signal, namu, fss, policy, ppomppu, fmkorea
-    });
-  }
+    res.json({
+        timestamp: new Date().toISOString(),
+        region,
+        google, signal, namu, fss, policy, ppomppu, instiz
+    });  }
 });
 
 app.post('/api/analyze', async (req, res) => {

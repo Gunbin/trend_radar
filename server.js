@@ -1063,6 +1063,12 @@ app.post('/api/generate-post', async (req, res) => {
         seoKeywords: tags.join(', '),
         lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
         coreMessage: postPlan.coreMessage,
+        // 기획 단계 누락 정보 전달 (오류 수정)
+        lifecycle: postPlan.trafficStrategy?.lifecycle || '',
+        category: postPlan.category || '',
+        shoppableKeyword: postPlan.shoppableKeyword || '',
+        faq: Array.isArray(postPlan.faq) ? postPlan.faq.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n\n') : '',
+        metaDescription: postPlan.metaDescription || '',
         // v2.4: trafficStrategy.targetAudience를 본문 프롬프트의 어휘/예시 톤 가이드로 활용 (없으면 안전한 기본값)
         targetAudience: postPlan?.trafficStrategy?.targetAudience || postPlan?.targetAudience || '일반 독자',
         // 이미지 자리에 플레이스홀더 텍스트만 넣도록 유도하거나, 빈 URL 전달

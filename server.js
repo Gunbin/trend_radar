@@ -15,6 +15,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import { v2 as cloudinary } from 'cloudinary';
 import { gotScraping } from 'got-scraping';
+import { google } from 'googleapis';
 
 // Cloudinary Configuration: 폴백 시크릿 제거. 환경변수 누락 시 기동 단계에서 명확히 종료.
 if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
@@ -870,6 +871,47 @@ async function getInstizHot() {
   });
 }
 
+// --- Google Indexing API Helper ---
+async function triggerGoogleIndexing(urlToindex) {
+  const keyPath = path.join(process.cwd(), 'blog-auto-posting-493814-55523dd2b0a8.json');
+  if (!fs.existsSync(keyPath)) {
+      logger.warn(`[Indexing API] Service account key not found at ${keyPath}. Skipping Google Indexing.`);
+      return;
+  }
+
+  try {
+      const key = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+      const jwtClient = new google.auth.JWT({
+          email: key.client_email,
+          key: key.private_key,
+          scopes: ["https://www.googleapis.com/auth/indexing"]
+      });
+
+      // 토큰 획득 대기
+      const tokens = await new Promise((resolve, reject) => {
+          jwtClient.authorize((err, tokens) => {
+              if (err) reject(err);
+              else resolve(tokens);
+          });
+      });
+
+      // API 쏘기
+      const response = await axios.post("https://indexing.googleapis.com/v3/urlNotifications:publish", {
+          url: urlToindex,
+          type: "URL_UPDATED"
+      }, {
+          headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${tokens.access_token}` 
+          }
+      });
+
+      logger.success(`[Indexing API] Successfully requested indexing for: ${urlToindex}`);
+  } catch (error) {
+      logger.error(`[Indexing API Error] Failed to request indexing for ${urlToindex}: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
 app.get('/api/config/prompts', (req, res) => {
   const lang = req.query.lang || 'ko';
   const fileName = lang === 'en' ? './prompts_en.yml' : './prompts_ko.yml';
@@ -1292,6 +1334,12 @@ app.post('/api/push-github', async (req, res) => {
       // [v2.4] 카니발 방지 인덱스 append (30일 prune 동시 수행)
       if (indexEntry && indexEntry.slug) {
           appendPublishedIndex({ ...indexEntry, lang, publishedAt: new Date().toISOString() });
+      }
+
+      // [Google Indexing API] 즉각적인 색인 요청 트리거
+      if (indexEntry && indexEntry.slug) {
+          const liveUrl = `https://gunbin.github.io/${lang === 'en' ? 'en/' : ''}blog/${indexEntry.slug}/`;
+          triggerGoogleIndexing(liveUrl).catch(err => logger.error('[Indexing API Error]', err));
       }
 
       res.json({ success: true, filePath: githubFilePath, url: response.data.content.html_url });

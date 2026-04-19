@@ -1,7 +1,7 @@
-# 의존성 파일
+# 의존성 패키지
 node_modules/
 
-# 환경 변수 및 비밀 키
+# 환경변수 파일
 .env
 .env.*
 !.env.example
@@ -12,15 +12,16 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 
-# 운영체제 생성 파일
+# OS 및 에디터 찌꺼기 파일
 .DS_Store
 Thumbs.db
-
-# IDE 및 에디터 설정
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# 카니발 방지 인덱스 (런타임 생성)
+# 애플리케이션 데이터 (발행 이력 등)
 published-index.json
+
+# 구글 서비스 계정 키 파일 (보안)
+blog-auto-posting-*.json

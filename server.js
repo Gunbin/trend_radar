@@ -412,7 +412,7 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
     const candidates = prunePublishedIndex(readPublishedIndex()).filter(it =>
         it.lang === lang &&
         it.slug !== currentSlug &&
-        Array.isArray(it.coreEntities) && it.coreEntities.length > 0
+        it.mainKeyword // 핵심 키워드 존재 여부 확인
     );
     if (!candidates.length) return markdown;
 
@@ -436,17 +436,31 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
 
     for (const cand of shuffled) {
         if (injected >= MAX_LINKS) break;
-        for (const ent of cand.coreEntities) {
+        
+        // coreEntities 대신 mainKeyword 우선 연결. mainKeyword가 너무 길면 coreEntities 활용 방안도 있으나,
+        // 어색한 매칭(예: "정부")을 막기 위해 3글자 이상인 경우만 허용.
+        const keywordsToTry = [cand.mainKeyword, ...(cand.coreEntities || [])].filter(Boolean);
+        
+        for (const ent of keywordsToTry) {
             if (injected >= MAX_LINKS) break;
-            const ek = String(ent || '').trim();
-            if (!ek || ek.length < 2 || linked.has(ek)) continue;
+            const ek = String(ent).trim();
+            
+            // 3글자 미만의 너무 짧은 단어는 무분별한 매칭을 유발하므로 제외
+            if (ek.length < 3 || linked.has(ek)) continue;
+            
+            // 한글/영문 등 텍스트 경계를 고려 (완벽하진 않으나 띄어쓰기나 조사 앞부분 매칭 유도)
+            // 너무 단순한 replace를 막기 위해
             const re = new RegExp(escapeRegex(ek));
             if (!re.test(working)) continue;
-            const url = `${baseUrl.replace(/\/$/, '')}/blog/${cand.slug}/`;
+            
+            const langSegment = cand.lang === 'en' ? '/en' : '/ko';
+            const url = `${baseUrl.replace(/\/$/, '')}${langSegment}/blog/${cand.slug}/`;
+            
+            // 첫 번째 매칭되는 단어 하나만 치환 (전역 치환 아님)
             working = working.replace(re, `[${ek}](${url})`);
             linked.add(ek);
             injected++;
-            break;
+            break; // 한 문서당 하나의 링크만 걸기
         }
     }
 

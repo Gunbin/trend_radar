@@ -198,6 +198,13 @@
                       </div>
                   </div>
                   <div class="setting-group">
+                      <label>AI_ENGINE_FEATURES</label>
+                      <div class="checkbox-group">
+                          <label><input type="checkbox" id="cfg-use-search" checked> ENABLE_GOOGLE_SEARCH (GROUNDING)</label>
+                      </div>
+                      <p class="hint-text" style="margin-top:5px; font-size:0.8rem; opacity:0.7;">* 활성화 시 최신 팩트체크를 수행하지만, API 쿼터 소진이 빠를 수 있습니다.</p>
+                  </div>
+                  <div class="setting-group">
                       <label>AI_TOPIC_COUNT (MAX 5)</label>
                       <input type="range" id="cfg-topics" min="1" max="5" value="3">
                       <span id="topics-val">3 TOPICS</span>

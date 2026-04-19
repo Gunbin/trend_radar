@@ -9,6 +9,7 @@ let APP_CONFIG = {
         KR: { google: true, nate: true, signal: true, fss: true, policy: true, ppomppu: true, instiz: true },
         US: { google: true, reddit: true, redditScams: true, redditPoverty: true, redditFrugal: true, yahoo: true, buzzfeed: true }
     },
+    useSearch: true,
     topicCount: 3,
     region: 'KR'
 };
@@ -42,6 +43,7 @@ function loadSettings() {
             APP_CONFIG.interval = parsed.interval || APP_CONFIG.interval;
             APP_CONFIG.topicCount = parsed.topicCount || APP_CONFIG.topicCount;
             APP_CONFIG.region = parsed.region || APP_CONFIG.region;
+            APP_CONFIG.useSearch = parsed.hasOwnProperty('useSearch') ? parsed.useSearch : APP_CONFIG.useSearch;
         } catch (e) {
             console.error('Failed to parse settings', e);
         }
@@ -68,6 +70,7 @@ function syncUIToSettings() {
     document.getElementById('src-yahoo').checked = APP_CONFIG.sources.US.yahoo;
     document.getElementById('src-buzzfeed').checked = APP_CONFIG.sources.US.buzzfeed !== false;
 
+    document.getElementById('cfg-use-search').checked = APP_CONFIG.useSearch;
     document.getElementById('cfg-topics').value = APP_CONFIG.topicCount;
     document.getElementById('region-select').value = APP_CONFIG.region || 'KR';
     
@@ -96,6 +99,7 @@ function saveSettings() {
     APP_CONFIG.sources.US.yahoo = document.getElementById('src-yahoo').checked;
     APP_CONFIG.sources.US.buzzfeed = document.getElementById('src-buzzfeed').checked;
 
+    APP_CONFIG.useSearch = document.getElementById('cfg-use-search').checked;
     APP_CONFIG.topicCount = parseInt(document.getElementById('cfg-topics').value);
     
     localStorage.setItem('trendRadar_cfg', JSON.stringify(APP_CONFIG));
@@ -491,7 +495,10 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 trends: currentTrendsData,
-                config: { topicCount: APP_CONFIG.topicCount },
+                config: { 
+                    topicCount: APP_CONFIG.topicCount,
+                    useSearch: APP_CONFIG.useSearch 
+                },
                 region: APP_CONFIG.region || 'KR'
             })
         });
@@ -534,7 +541,10 @@ document.getElementById('manual-analyze-btn').addEventListener('click', async ()
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 manualText: manualText,
-                config: { topicCount: APP_CONFIG.topicCount },
+                config: { 
+                    topicCount: APP_CONFIG.topicCount,
+                    useSearch: APP_CONFIG.useSearch
+                },
                 region: APP_CONFIG.region || 'KR'
             })
         });
@@ -603,7 +613,8 @@ async function generateFullPost(postPlan) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 postPlan,
-                region: APP_CONFIG.region || 'KR'
+                region: APP_CONFIG.region || 'KR',
+                useSearch: APP_CONFIG.useSearch
             })
         });
         

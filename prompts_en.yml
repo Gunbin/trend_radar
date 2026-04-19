@@ -19,6 +19,7 @@ tasks:
          - Evergreen plans: apply the "Will anyone search this 3 months from now?" lifespan test, then convert into a behavior-driven long-tail mainKeyword tied to the reader's wallet, time, or safety. (e.g., "Apple Watch" → "How to replace Apple Watch battery without getting ripped off")
       2. Dynamic Angle Assignment: Choose ONE lowercase English word ('expose', 'guide', or 'compare') that fits the plan best.
       3. Data/Fact-Driven (coreFact): Pull a specific fact or number directly from the [Input Data]. NEVER invent statistics, prices, or counts. If the source has no numbers (e.g., reddit titles only), use the source name, post score, comment count, publish time, rank, or cited outlet as the fact.
+      4. Google Search Integration (Fact Scouting): If the input data is vague or lacks specific numbers/dates, actively use the [Google Search] tool to verify the latest facts. Incorporate found background details into the coreFact.
 
       [viralTitles Rules — Do NOT copy any literal example; reassemble fresh every time]
       Use the [Formula] below to extract words from the input data and assemble new titles each time. Keep titles roughly under 60 characters (Google SERP friendly) and front-load the main keyword.
@@ -141,6 +142,8 @@ tasks:
       - "Visual Hierarchy & Image Format Compliance: Use **Markdown Tables** when comparing complex numbers, but never force them. Provided image placeholders ({{context_url_1}}, {{context_url_2}}, {{context_url_3}}) MUST be inserted in this exact format at contextually appropriate points in the body: ![Alt Text](IMAGE_PLACEHOLDER_N \"english keyword\") (where N is 1, 2, or 3). **Outputting the placeholder string as plain text without markdown syntax, OR omitting the english keyword title, is a critical failure.**"
       - "GEO Optimization (Dynamic Conclusion & Design): Build the final H2 according to {{conclusionType}}. Avoid plain text blocks; the conclusion MUST be visually distinct and designed as a box using blockquotes (>), markdown lists, or bold text."
       - "Natural Affiliate Link Insertion: If there is a natural context in the body discussing the main keyword or related products, insert the variable '{{coupangLink}}' exactly once. Do not force it; only show it when it genuinely helps the reader."
+      - "Deep Data Mapping via Google Search: When writing the body, if precise prices, dates, locations, or statistical figures are needed, actively use [Google Search] to provide fact-checked information. Avoid vague or speculative language."
+      - "Authority Citations (Reference SEO): Just before the final conclusion, include a '[References]' section with 1-2 reliable news sources or official agency links discovered during your search. (e.g., \"This information was fact-checked based on official OOO reports.\")"
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}
@@ -174,6 +177,8 @@ tasks:
       - "H2 Headings: Use {{subTopics}} to construct action-oriented headings."
       - "GEO Optimization (Dynamic Conclusion & Design): Build the final H2 according to {{conclusionType}}. Avoid plain text blocks; the conclusion MUST be visually distinct and designed as a box using blockquotes (>), markdown lists, or bold text."
       - "Natural Affiliate Link Insertion: If there is a natural context in the body discussing the main keyword or related products, insert the variable '{{coupangLink}}' exactly once. Do not force it; only show it when it genuinely helps the reader."
+      - "Deep Data Mapping via Google Search: When writing the body, if precise prices, dates, locations, or statistical figures are needed, actively use [Google Search] to provide fact-checked information. Avoid vague or speculative language."
+      - "Authority Citations (Reference SEO): Just before the final conclusion, include a '[References]' section with 1-2 reliable news sources or official agency links discovered during your search. (e.g., \"This information was fact-checked based on official OOO reports.\")"
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}
@@ -207,6 +212,8 @@ tasks:
       - "H2 Headings: Use {{subTopics}} to construct headings that already imply a verdict."
       - "GEO Optimization (Dynamic Conclusion & Design): Build the final H2 according to {{conclusionType}}. Avoid plain text blocks; the conclusion MUST be visually distinct and designed as a box using blockquotes (>), markdown lists, or bold text."
       - "Natural Affiliate Link Insertion: If there is a natural context in the body discussing the main keyword or related products, insert the variable '{{coupangLink}}' exactly once. Do not force it; only show it when it genuinely helps the reader."
+      - "Deep Data Mapping via Google Search: When writing the body, if precise prices, dates, locations, or statistical figures are needed, actively use [Google Search] to provide fact-checked information. Avoid vague or speculative language."
+      - "Authority Citations (Reference SEO): Just before the final conclusion, include a '[References]' section with 1-2 reliable news sources or official agency links discovered during your search. (e.g., \"This information was fact-checked based on official OOO reports.\")"
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}

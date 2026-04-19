@@ -962,6 +962,7 @@ app.get('/api/trends', async (req, res) => {
 app.post('/api/analyze', async (req, res) => {
   const { trends, manualText, config, region = 'KR' } = req.body; 
   const topicCount = config?.topicCount || 3;
+  const useSearch = config?.useSearch !== false; // 기본값 true
   const lang = region === 'US' ? 'en' : 'ko';
 
   const modelsToTry = await getBestModels();
@@ -970,8 +971,18 @@ app.post('/api/analyze', async (req, res) => {
   for (let i = 0; i < modelsToTry.length; i++) {
     const modelName = modelsToTry[i];
     try {
-      logger.process(`[Analysis] Attempting with ${modelName} (Count: ${topicCount}, Region: ${region})`);
-      const model = genAI.getGenerativeModel({ model: modelName });
+      logger.process(`[Analysis] Attempting with ${modelName} (Count: ${topicCount}, Region: ${region}, Search: ${useSearch})`);
+      
+      // [Google Search Grounding] 실시간 검색 도구 활성화 조건
+      // 1. 사용자 설정이 ON 이어야 함
+      // 2. 모델이 도구를 지원해야 함 (lite, gemma 등은 제외)
+      const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
+      const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
+
+      const model = genAI.getGenerativeModel({ 
+          model: modelName,
+          tools: tools
+      });
       
       let prompt;
       if (manualText) {
@@ -1012,7 +1023,7 @@ app.post('/api/analyze', async (req, res) => {
 });
 
 app.post('/api/generate-post', async (req, res) => {
-  const { postPlan, region = 'KR' } = req.body;
+  const { postPlan, region = 'KR', useSearch = true } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
 
   // [v2.4] 태그 자동 확장: mainKeyword + seoKeywords + lsi + coreEntities → 4~8개
@@ -1027,8 +1038,16 @@ app.post('/api/generate-post', async (req, res) => {
   for (let i = 0; i < modelsToTry.length; i++) {
     const modelName = modelsToTry[i];
     try {
-      logger.process(`[Post Gen] Generating content with ${modelName} (Region: ${region})`);
-      const model = genAI.getGenerativeModel({ model: modelName });
+      logger.process(`[Post Gen] Generating content with ${modelName} (Region: ${region}, Search: ${useSearch})`);
+      
+      // [Google Search Grounding] 실시간 검색 도구 활성화 조건
+      const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
+      const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
+
+      const model = genAI.getGenerativeModel({ 
+          model: modelName,
+          tools: tools
+      });
       
       const angle = postPlan.angleType || 'guide';
       const promptKey = `post_writing_${angle}`;

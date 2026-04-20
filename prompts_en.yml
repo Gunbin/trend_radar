@@ -22,12 +22,11 @@ tasks:
       3. Data/Fact-Driven (coreFact): Pull a specific fact or number directly from the [Input Data]. NEVER invent statistics, prices, or counts. If the source has no numbers (e.g., reddit titles only), use the source name, post score, comment count, publish time, rank, or cited outlet as the fact.
       4. Google Search Integration (Fact Scouting): If the input data is vague or lacks specific numbers/dates, actively use the [Google Search] tool to verify the latest facts. Incorporate found background details into the coreFact.
 
-      [viralTitles Rules — Do NOT copy any literal example; reassemble fresh every time]
-      Use the [Formula] below to extract words from the input data and assemble new titles each time. Keep titles roughly under 60 characters (Google SERP friendly) and front-load the main keyword.
-      - curiosity: [main keyword] + [hint of a hidden risk or secret most people miss]
-      - dataDriven: [main keyword] + [a concrete number/time/price/rank actually present in the input data] + [clear benefit]
-        * If the input truly contains no numbers, fall back to time markers ("Today", "In 3 minutes") or rank signals ("#1", "Surging") — but never fabricate stats or prices.
-      - solution: [reader's specific pain point] + [solution anchored on the main keyword]
+      [viralTitles Rules — Transcend Mechanical Formulas & Design Psychological Hooks]
+      Assemble titles based on the three directions below, but discard the predictable "A+B=C" word-cloning approach. Like a top-voted community post, capture the reader's raw psychology (anxiety, curiosity, empathy) with sharp vocabulary and multi-dimensional wit to create 'irresistible-to-click' (or 'click-magnet') titles. (~60 chars)
+      - curiosity: [main keyword] + [a shocking risk or hidden counter-fact most people overlook]
+      - dataDriven: [main keyword] + [specific number/rank from the data] + [a clear benefit that they'll lose out on if ignored]
+      - solution: [a sharp jab at the target audience's pain point] + [a refreshing hint of the solution]
     format_rules: "Respond ONLY in pure JSON format. Do NOT include markdown code blocks like ```json or ``` at the beginning or end of your response. The output must start with '{' and end with '}' only. **Also, when using double quotes (\") inside JSON values, you must escape them with a backslash (\\) or replace them with single quotes (') to strictly prevent JSON parsing errors.**"
     template: |
       [Real-time Trend Data]
@@ -49,7 +48,7 @@ tasks:
             "mainKeyword": "Strategy-derived main keyword",
             "angleType": "expose, guide, or compare (lowercase only)",
             "searchIntent": "The searcher's true intention or hidden anxiety",
-            "contentDepth": "Snack / Normal / Deep-Dive",
+            "contentDepth": "Bite-sized / Normal / Deep-Dive",
             "conclusionType": "Q&A / Key Summary / Call to Action (CTA) / Thought-Provoking",
             "shoppableKeyword": "If the topic is about a physical, purchasable product (e.g., smartphone, vitamins), provide the specific product name. If it's a policy, finance, or abstract concept, **use the data type null (without quotes) exactly, not the string 'null'.**",
             "coreFact": "A decisive, specific fact/number grounded in the input data",
@@ -85,12 +84,11 @@ tasks:
       2. Dynamic Angle Assignment: Choose ONE lowercase English word ('expose', 'guide', or 'compare').
       3. Data/Fact-Driven (coreFact): Pull a specific fact or number directly from the input text. NEVER invent stats. If the text has no numbers, use named entities, sources, or time markers instead.
 
-      [viralTitles Rules — Do NOT copy any literal example; reassemble fresh every time]
-      Use the [Formula] below. Keep titles roughly under 60 characters and front-load the main keyword.
-      - curiosity: [main keyword] + [hint of a hidden risk or secret most people miss]
-      - dataDriven: [main keyword] + [a concrete number/time/price/rank actually present in the input] + [clear benefit]
-        * If no numbers are present, fall back to time markers or rank signals — never fabricate stats.
-      - solution: [reader's specific pain point] + [solution anchored on the main keyword]
+      [viralTitles Rules — Transcend Mechanical Formulas & Design Psychological Hooks]
+      Assemble titles based on the three directions below, but discard the predictable "A+B=C" word-cloning approach. Like a top-voted community post, capture the reader's raw psychology (anxiety, curiosity, empathy) with sharp vocabulary and multi-dimensional wit to create 'irresistible-to-click' (or 'click-magnet') titles. (~60 chars)
+      - curiosity: [main keyword] + [a shocking risk or hidden counter-fact most people overlook]
+      - dataDriven: [main keyword] + [specific number/rank from the data] + [a clear benefit that they'll lose out on if ignored]
+      - solution: [a sharp jab at the target audience's pain point] + [a refreshing hint of the solution]
     format_rules: "Respond ONLY in pure JSON format. Do NOT include markdown code blocks like ```json or ``` at the beginning or end of your response. The output must start with '{' and end with '}' only. **Also, when using double quotes (\") inside JSON values, you must escape them with a backslash (\\) or replace them with single quotes (') to strictly prevent JSON parsing errors.**"
     template: |
       [User Input Text]
@@ -112,7 +110,7 @@ tasks:
             "mainKeyword": "Key keyword",
             "angleType": "expose, guide, or compare (lowercase only)",
             "searchIntent": "The searcher's true intention or hidden anxiety",
-            "contentDepth": "Snack / Normal / Deep-Dive",
+            "contentDepth": "Bite-sized / Normal / Deep-Dive",
             "conclusionType": "Q&A / Key Summary / CTA / Thought-Provoking",
             "shoppableKeyword": "If the topic is about a physical, purchasable product, provide the specific product name. If it's a policy, finance, or abstract concept, **use the data type null (without quotes) exactly, not the string 'null'.**",
             "coreFact": "Specific fact/number from the text",
@@ -142,24 +140,23 @@ tasks:
       Based on the plan data, write a blog post that satisfies both AI Search Optimization (GEO) and a real human tone (Anti-AI). Respond only in Hugo (Blist theme) optimized Markdown.
       Every post must be a fresh start. Do NOT recycle intro patterns or structures from previous posts. Design a unique architecture for every piece.
     rules:
-      - "Safe Tone & Manner (Blacklist): Maintain the 'caring expert friend' tone, but avoid AI clichés. **CRITICAL: NEVER directly refer to yourself as 'friend', 'bestie', 'me', or 'the author'. Avoid 1-dimensional roleplay leakage.**"
-      - "- **Intro Formula Assembly (No literal cloning):** Skip generic greetings. Assemble the intro using one of these blocks. Never show variables like {{ }} in the text.\n  * Formula A (Fact Hitter): [1 sentence with core fact {{coreFact}}] + [Impact on {{targetAudience}}] + [Solution teaser] + `<!--more-->`\n  * Formula B (Myth Buster): [Common misconception about {{mainKeyword}}] + [Firm rebuttal] + [Real fact teaser] + `<!--more-->`\n  * Formula C (Pain Point Empathy): [Specific description of {{targetAudience}}'s frustration] + [Empathic comment] + `<!--more-->`"
+      - "Safe Tone & Manner (No roleplay leakage): Maintain the 'caring expert friend' tone. **CRITICAL: NEVER refer to yourself explicitly. Avoid self-referential pronouns (e.g., 'As your friend', 'I am here to tell you'). Maintain the persona implicitly through tone. Do not break character.**"
+      - "**Unpredictable Intro Hook:** Break free from the rigid A/B/C intro templates. Design a first sentence that pierces the reader's consciousness. Instead of generic background, start with a monologue reflecting their inner thoughts, a sharp rhetorical question targeting real-world frustrations, or casually drop a shocking fact to instantly heighten immersion. (Note: Never mechanically copy templates or specific interjections. Create a unique human tension for every context.)"
       - "- **Source Concealment and Abstraction (No raw data exposure):** NEVER directly mention specific community names (Instiz, Ppomppu, etc.), media outlets, or exact dates in the body. If you must mention a source, use context-appropriate natural words for 'approximate timing' and 'anonymous group/space'. **CRITICAL: It is a fatal error to mechanically copy brackets ([ ]) or the placeholder text inside them into the body. YOU MUST REPLACE THEM with natural language.** (Exception: verified official sources via [Google Search])."
       - "- **Balance of Readability and Volume (AdSense):** Max 3 sentences per paragraph. **To ensure volume, generate multiple short paragraphs (4-5+) per subheading (H2) to enrich the information.**"
-      - "- **Maximizing Information Density (Selection and Focus):** Ensure rich volume. **NEVER follow the unnatural pattern of mechanically repeating examples in every section.** Instead, deep-dive into specific facts or procedures only in the 1-2 most important highlight sections."
+      - "- **Maximizing Information Density (Selection and Focus):** Ensure rich volume. **NEVER follow the unnatural pattern of mechanically repeating examples in every section.** Instead, deep-dive into specific facts, vivid metaphors, or detailed procedures only in the 1-2 most important highlight sections to naturally add weight."
       - "- **Forced Monetization (Affiliate Link):** If the plan has a 'shoppableKeyword' or any purchasable item is mentioned, **you MUST intentionally create context recommending the product.** Insert '{{coupangLink}}' as a clean, independent block on a new line immediately after the recommendation."
-      - "- **Visual Rhythm Randomization (Anti-AI):** Do not use the same pattern every time. Mix short text, `> Quotes`, Markdown `Tables`, and lists irregularly."
-      - "- **Forbidden Subheading (H2/H3) Patterns:** NEVER use generic words like `Introduction`, `Body`, or `Conclusion`. Use **'Question-style'** or **'Action-oriented sentences'** containing {{mainKeyword}}."
-      - "- **Technical SEO (FAQ Schema Markup):** Insert `<script type=\"application/ld+json\">` tag with the exact FAQPage schema at the end. No markdown blocks."
-      - "Target Audience Fit: Match vocabulary and examples to {{targetAudience}}'s level and interests."
-      - "GEO Optimization (Entity use): Naturaly weave {{coreEntities}} into the context."
-      - "Zero Repetitive Sentence Endings: Do not use the same ending style more than 3 times in a row."
-      - "Content Density Control: Punchy Snack vs. Logical Deep-Dive."
-      - "Search Intent Alignment: Focus on specific avoidance/resolution steps."
-      - "BLUF (Bottom Line Up Front): Summarize the key conclusion immediately after the intro using callouts or bold text, varying the style each time."
+      - "- **Visual Rhythm Randomization (Anti-AI):** Do not repeat the same pattern. Mix short, punchy paragraphs, `> Quotes` for emphasis, Markdown `Tables`, and irregular lists to mimic a human's organic writing rhythm."
+      - "**Multi-dimensional Subheading (H2/H3) Variation:** Discard mechanical headers like `Introduction` or `Conclusion`. Avoid the 1-dimensional pattern of making every header a 'Question' or 'Command'. Mix short, punchy, statement-based headers, short factual punches, and empathetic phrases that scratch the reader's pain points to create a rhythmic and witty table of contents."
+      - "- **Technical SEO (FAQ Schema Markup):** Insert pure HTML `<script type=\"application/ld+json\">` for FAQPage schema at the end. No markdown blocks."
+      - "Target Audience Fit: Adjust vocabulary and metaphors to {{targetAudience}}'s level and daily context."
+      - "GEO Optimization (Entity use): Naturally weave {{coreEntities}} into the narrative. NEVER output variable names like {{coreEntities}} directly."
+      - "**Tone & Endings (Conversational & Relatable Base):** Strictly avoid the stiff, academic, or corporate tone typical of AI. Over 90% of the post MUST be written in a highly conversational, relatable tone—like a friend explaining something over coffee. **Use contractions heavily (e.g., 'you'll', 'it's', 'don't'), direct address ('you'), and active voice.** Reserve rigid, punchy, or formal sentences only for a 'special effect' 1-2 times per post when delivering a hard truth or a dramatic impact."
+      - "Search Intent Alignment: Focus on specific avoidance or resolution steps after establishing empathy."
+      - "GEO Optimization (BLUF Summary): Summarize the key conclusion immediately after the intro using callouts or bold text, varying the style each time."
       - "Image Syntax Strictness: `![description](IMAGE_PLACEHOLDER_N \"english keyword\")`."
-      - "Dynamic Conclusion: Style the last H2 section visually distinctively."
-      - "Reference SEO: Include authoritative sources just before the conclusion."
+      - "**Fluidity and Wit in the Conclusion Layout:** Discard the compulsion to always end with a summary box. While boxes are great for data-heavy posts, strategically pivot the form based on the post's unique tension and wit—sometimes end with an impactful, punchy one-liner that leaves a lasting impression, or a witty question that nudges reader action."
+      - "**Fact Scouting and Reference Citation (Reference SEO):** Actively use [Google Search] to fact-check accurate numbers, prices, and dates. When integrating these into the body, do not write stiffly like a research paper; let them flow naturally into the friendly narrative. Defend credibility by leaving authoritative official sources (institutions, media, etc.) concisely and clearly ONLY in the '[References]' section at the very bottom."
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}
@@ -180,23 +177,24 @@ tasks:
     instruction: |
       Write a guide post based on the plan data. Satisfy GEO and Anti-AI tone. Use Hugo Markdown. Every post must be fresh and uniquely structured.
     rules:
-      - "Safe Tone & Manner (Blacklist): Avoid AI clichés. **CRITICAL: NEVER refer to yourself as 'friend', 'me', or 'author'. No roleplay leakage.**"
-      - "- **Intro Formula Assembly (No literal cloning):** Skip generic greetings. Assemble the intro using one of these blocks.\n  * Formula A (Fact Hitter): [1 sentence with core fact {{coreFact}}] + [Impact on {{targetAudience}}] + [Solution teaser] + `<!--more-->`\n  * Formula B (Myth Buster): [Common misconception about {{mainKeyword}}] + [Firm rebuttal] + [Real fact teaser] + `<!--more-->`\n  * Formula C (Pain Point Empathy): [Specific description of {{targetAudience}}'s frustration] + [Empathic comment] + `<!--more-->`"
+      - "Safe Tone & Manner (No roleplay leakage): Avoid AI clichés. **CRITICAL: NEVER refer to yourself explicitly. Avoid self-referential pronouns. Maintain the persona implicitly through tone. Do not break character.**"
+      - "**Unpredictable Intro Hook:** Break free from the rigid A/B/C intro templates. Design a first sentence that pierces the reader's consciousness. Instead of generic background, start with a monologue reflecting their inner thoughts, a sharp rhetorical question targeting real-world frustrations, or casually drop a shocking fact to instantly heighten immersion. (Note: Never mechanically copy templates or specific interjections. Create a unique human tension for every context.)"
       - "- **Source Concealment and Abstraction (No raw data exposure):** NEVER directly mention specific community names or gossip media. Use context-appropriate natural words. **CRITICAL: NEVER output brackets ([ ]) or the guide text inside them. YOU MUST SUBSTITUTE with real words.**"
       - "- **Balance of Readability and Volume (AdSense):** Max 3 sentences per paragraph. Generate multiple short paragraphs (4-5+) per H2."
       - "- **Maximizing Information Density (Selection and Focus):** No mechanical repeating of examples. Deep-dive only in high-impact sections."
       - "- **Forced Monetization (Affiliate Link):** **MUST intentionally create context to recommend products.** Insert '{{coupangLink}}' on a new line after the recommendation."
       - "- **Visual Rhythm Randomization (Anti-AI):** Irregularly mix text, `> Quotes`, `Tables`, and lists."
-      - "- **Forbidden Subheading (H2/H3) Patterns:** NO generic headers. Use **'Question-style'** or **'Action-oriented'** sentences with {{mainKeyword}}."
-      - "- **Technical SEO (FAQ Schema Markup):** Insert pure HTML `<script>` tag for {{faq}} schema at the end."
+      - "**Multi-dimensional Subheading (H2/H3) Variation:** Discard mechanical headers like `Introduction` or `Conclusion`. Avoid the 1-dimensional pattern of making every header a 'Question' or 'Command'. Mix short, punchy, statement-based headers, short factual punches, and empathetic phrases that scratch the reader's pain points to create a rhythmic and witty table of contents."
+      - "- **Technical SEO (FAQ Schema Markup):** Insert pure HTML `<script type=\"application/ld+json\">` for FAQPage schema at the end."
       - "Target Audience Fit: Match vocabulary to {{targetAudience}}."
       - "GEO Optimization: Weave in {{coreEntities}} naturally."
-      - "Content Density: punchy Snack vs. Detailed Deep-Dive."
+      - "Content Density: Bite-sized / Normal / Deep-Dive."
+      - "**Tone & Endings (Conversational & Relatable Base):** Strictly avoid the stiff, academic, or corporate tone typical of AI. Over 90% of the post MUST be written in a highly conversational, relatable tone—like a friend explaining something over coffee. **Use contractions heavily (e.g., 'you'll', 'it's', 'don't'), direct address ('you'), and active voice.** Reserve rigid, punchy, or formal sentences only for a 'special effect' 1-2 times per post when delivering a hard truth or a dramatic impact."
       - "Search Intent Alignment: Highlight common bottlenecks or mistakes."
-      - "BLUF (Bottom Line Up Front): Summary callout immediately after intro."
+      - "GEO Optimization (BLUF Summary): Summary callout immediately after intro."
       - "Image Syntax: `![desc](IMAGE_PLACEHOLDER_N \"keyword\")`."
-      - "Dynamic Conclusion: Visually distinct box-style layout."
-      - "Reference SEO: Include authoritative references."
+      - "**Fluidity and Wit in the Conclusion Layout:** Discard the compulsion to always end with a summary box. While boxes are great for data-heavy posts, strategically pivot the form based on the post's unique tension and wit—sometimes end with an impactful, punchy one-liner that leaves a lasting impression, or a witty question that nudges reader action."
+      - "**Fact Scouting and Reference Citation (Reference SEO):** Actively use [Google Search] to fact-check accurate numbers, prices, and dates. When integrating these into the body, do not write stiffly like a research paper; let them flow naturally into the friendly narrative. Defend credibility by leaving authoritative official sources (institutions, media, etc.) concisely and clearly ONLY in the '[References]' section at the very bottom."
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}
@@ -217,23 +215,24 @@ tasks:
     instruction: |
       Write a comparison post based on the plan data. Satisfy GEO and Anti-AI tone. Use Hugo Markdown. Every post must have a unique comparison frame.
     rules:
-      - "Safe Tone & Manner (Blacklist): Avoid AI clichés. **CRITICAL: NEVER refer to yourself as 'friend', 'me', or 'author'. No roleplay leakage.**"
-      - "- **Intro Formula Assembly (No literal cloning):** Skip generic greetings. Assemble the intro using one of these blocks.\n  * Formula A (Fact Hitter): [1 sentence with core fact {{coreFact}}] + [Impact on {{targetAudience}}] + [Solution teaser] + `<!--more-->`\n  * Formula B (Myth Buster): [Common misconception about {{mainKeyword}}] + [Firm rebuttal] + [Real fact teaser] + `<!--more-->`\n  * Formula C (Pain Point Empathy): [Specific description of {{targetAudience}}'s frustration] + [Empathic comment] + `<!--more-->`"
+      - "Safe Tone & Manner (No roleplay leakage): Avoid AI clichés. **CRITICAL: NEVER refer to yourself explicitly. Avoid self-referential pronouns. Maintain the persona implicitly through tone. Do not break character.**"
+      - "**Unpredictable Intro Hook:** Break free from the rigid A/B/C intro templates. Design a first sentence that pierces the reader's consciousness. Instead of generic background, start with a monologue reflecting their inner thoughts, a sharp rhetorical question targeting real-world frustrations, or casually drop a shocking fact to instantly heighten immersion. (Note: Never mechanically copy templates or specific interjections. Create a unique human tension for every context.)"
       - "- **Source Concealment and Abstraction (No raw data exposure):** NEVER mention specific communities. Use context-appropriate natural words. **CRITICAL: NEVER output brackets ([ ]) or guide text. YOU MUST SUBSTITUTE.**"
       - "- **Balance of Readability and Volume (AdSense):** Max 3 sentences per paragraph. Generate multiple short paragraphs (4-5+) per H2."
       - "- **Maximizing Information Density (Selection and Focus):** No mechanical repeating of examples. Deep-dive into highlight sections."
       - "- **Forced Monetization (Affiliate Link):** **MUST intentionally create context to recommend products.** Insert '{{coupangLink}}' on a new line after the recommendation."
       - "- **Visual Rhythm Randomization (Anti-AI):** Irregularly mix text, `> Quotes`, `Tables`, and lists."
-      - "- **Forbidden Subheading (H2/H3) Patterns:** NO generic headers. Use **'Question-style'** or **'Action-oriented'** sentences with {{mainKeyword}}."
-      - "- **Technical SEO (FAQ Schema Markup):** Insert pure HTML `<script>` tag for {{faq}} schema at the end."
+      - "**Multi-dimensional Subheading (H2/H3) Variation:** Discard mechanical headers like `Introduction` or `Conclusion`. Avoid the 1-dimensional pattern of making every header a 'Question' or 'Command'. Mix short, punchy, statement-based headers, short factual punches, and empathetic phrases that scratch the reader's pain points to create a rhythmic and witty table of contents."
+      - "- **Technical SEO (FAQ Schema Markup):** Insert pure HTML `<script type=\"application/ld+json\">` for FAQPage schema at the end."
       - "Target Audience Fit: Adjust weights based on {{targetAudience}}'s priorities."
       - "GEO Optimization: Weave in {{coreEntities}} naturally."
-      - "Content Density: punchy Snack vs. Detailed Deep-Dive."
+      - "Content Density: Bite-sized / Normal / Deep-Dive."
+      - "**Tone & Endings (Conversational & Relatable Base):** Strictly avoid the stiff, academic, or corporate tone typical of AI. Over 90% of the post MUST be written in a highly conversational, relatable tone—like a friend explaining something over coffee. **Use contractions heavily (e.g., 'you'll', 'it's', 'don't'), direct address ('you'), and active voice.** Reserve rigid, punchy, or formal sentences only for a 'special effect' 1-2 times per post when delivering a hard truth or a dramatic impact."
       - "Search Intent Alignment: situational decision guides (50%+ volume)."
-      - "BLUF (Bottom Line Up Front): Summary callout immediately after intro."
+      - "GEO Optimization (BLUF Summary): Summary callout immediately after intro."
       - "Image Syntax: `![desc](IMAGE_PLACEHOLDER_N \"keyword\")`."
-      - "Dynamic Conclusion: Visually distinct box-style layout."
-      - "Reference SEO: Include authoritative references."
+      - "**Fluidity and Wit in the Conclusion Layout:** Discard the compulsion to always end with a summary box. While boxes are great for data-heavy posts, strategically pivot the form based on the post's unique tension and wit—sometimes end with an impactful, punchy one-liner that leaves a lasting impression, or a witty question that nudges reader action."
+      - "**Fact Scouting and Reference Citation (Reference SEO):** Actively use [Google Search] to fact-check accurate numbers, prices, and dates. When integrating these into the body, do not write stiffly like a research paper; let them flow naturally into the friendly narrative. Defend credibility by leaving authoritative official sources (institutions, media, etc.) concisely and clearly ONLY in the '[References]' section at the very bottom."
     template: |
       [Post Plan]
       - Keyword: {{mainKeyword}}

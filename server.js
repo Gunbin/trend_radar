@@ -56,61 +56,64 @@ let cachedModelsAt = 0;
 async function getBestModels() {
     if (cachedModels && (Date.now() - cachedModelsAt) < MODELS_CACHE_TTL_MS) return cachedModels;
 
-    try {
-        const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
-        
-        let models = response.data.models
-            .map(m => m.name.replace('models/', ''))
-            // 텍스트/채팅을 지원하는 모델만 필터링 (음성, 임베딩, 이미지, 특정 목적 모델 제외)
-            .filter(name => name.startsWith('gemini') || name.startsWith('gemma'))
-            .filter(name => !name.includes('tts') && !name.includes('embedding') && !name.includes('audio') && 
-                            !name.includes('vision') && !name.includes('image') && !name.includes('robotics') && 
-                            !name.includes('computer-use') && !name.includes('research'));
+    const apiKey1 = process.env.GEMINI_API_KEY;
+    const apiKey2 = process.env.GEMINI_API_KEY_2;
+    const keysToTry = [apiKey1, apiKey2].filter(Boolean);
 
-        // 똑똑한 순서(지능 및 버전)로 정렬하기 위한 휴리스틱 스코어링
-        const getScore = (name) => {
-            let score = 0;
+    for (const key of keysToTry) {
+        try {
+            const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
             
-            // 1. 모델 등급 (Pro > Flash > Gemma)
-            if (name.includes('pro')) score += 1000;
-            else if (name.includes('flash')) score += 500;
-            else if (name.includes('gemma')) score += 100;
-            
-            // Lite는 동일 등급에서 약간 감점
-            if (name.includes('lite')) score -= 50;
-            
-            // 2. 버전 넘버링 (예: 3.1, 3.0, 2.5, 2.0) - 높을수록 가점
-            const vMatch = name.match(/(\d+\.\d+|\d+)/);
-            if (vMatch) {
-                score += parseFloat(vMatch[1]) * 10;
-            }
-            
-            // 3. 안정성 (latest 우대, preview 약간 감점)
-            if (name.includes('latest')) score += 5;
-            if (name.includes('preview')) score -= 2;
+            let models = response.data.models
+                .map(m => m.name.replace('models/', ''))
+                // 텍스트/채팅을 지원하는 모델만 필터링 (음성, 임베딩, 이미지, 특정 목적 모델 제외)
+                .filter(name => name.startsWith('gemini') || name.startsWith('gemma'))
+                .filter(name => !name.includes('tts') && !name.includes('embedding') && !name.includes('audio') && 
+                                !name.includes('vision') && !name.includes('image') && !name.includes('robotics') && 
+                                !name.includes('computer-use') && !name.includes('research'));
 
-            return score;
-        };
+            // 똑똑한 순서(지능 및 버전)로 정렬하기 위한 휴리스틱 스코어링
+            const getScore = (name) => {
+                let score = 0;
+                
+                // 1. 모델 등급 (Pro > Flash > Gemma)
+                if (name.includes('pro')) score += 1000;
+                else if (name.includes('flash')) score += 500;
+                else if (name.includes('gemma')) score += 100;
+                
+                // Lite는 동일 등급에서 약간 감점
+                if (name.includes('lite')) score -= 50;
+                
+                // 2. 버전 넘버링 (예: 3.1, 3.0, 2.5, 2.0) - 높을수록 가점
+                const vMatch = name.match(/(\d+\.\d+|\d+)/);
+                if (vMatch) {
+                    score += parseFloat(vMatch[1]) * 10;
+                }
+                
+                // 3. 안정성 (latest 우대, preview 약간 감점)
+                if (name.includes('latest')) score += 5;
+                if (name.includes('preview')) score -= 2;
 
-        // 점수 내림차순(가장 똑똑한 모델이 0번 인덱스) 정렬
-        models.sort((a, b) => getScore(b) - getScore(a));
-        
-        // 너무 많은 모델을 시도할 필요는 없으므로 상위 10개만 유지
-        cachedModels = models.slice(0, 10);
-        cachedModelsAt = Date.now();
-        logger.info(`[System] Dynamically loaded ${cachedModels.length} models (TTL 6h). Highest intelligence: ${cachedModels[0]}`);
-        return cachedModels;
+                return score;
+            };
 
-    } catch (error) {
-        logger.error("[System] Failed to fetch models dynamically. Using reliable fallback list.");
-        return [
-            "gemini-3.1-pro-preview",
-            "gemini-3-pro-preview",
-            "gemini-2.5-pro",
-            "gemini-2.5-flash",
-            "gemini-2.0-flash"
-        ];
+            // 점수 내림차순(가장 똑똑한 모델이 0번 인덱스) 정렬
+            models.sort((a, b) => getScore(b) - getScore(a));
+            
+            // 너무 많은 모델을 시도할 필요는 없으므로 상위 10개만 유지
+            cachedModels = models.slice(0, 10);
+            cachedModelsAt = Date.now();
+            logger.info(`[System] Dynamically loaded ${cachedModels.length} models (TTL 6h). Highest intelligence: ${cachedModels[0]}`);
+            return cachedModels;
+
+        } catch (error) {
+            logger.warn(`[System] Failed to fetch models dynamically with a key: ${error.message}`);
+            continue;
+        }
     }
+    
+    logger.error("[System] Failed to fetch models dynamically with all API keys. Failing explicitly.");
+    return [];
 }
 
 // --- Translation Helper (For better image search) ---
@@ -125,20 +128,41 @@ async function translateToEnglish(keyword) {
   // getBestModels()를 통해 가용한 최적의 모델 목록을 가져와 순회
   const models = await getBestModels();
   
-  for (const modelName of models) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      let translated = response.text().trim().replace(/["'.]/g, '');
+  const apiKey1 = process.env.GEMINI_API_KEY;
+  const apiKey2 = process.env.GEMINI_API_KEY_2;
+  const apis = [
+      { name: 'API_1', key: apiKey1 },
+      { name: 'API_2', key: apiKey2 }
+  ].filter(api => api.key);
+
+  for (const api of apis) {
+      const currentGenAI = new GoogleGenerativeAI(api.key);
+      let success = false;
       
-      if (translated) {
-        return translated;
+      for (const modelName of models) {
+        if (api.name === 'API_1') {
+            const vMatch = modelName.match(/(\d+\.\d+|\d+)/);
+            if (vMatch && parseFloat(vMatch[1]) < 3 && modelName.includes('flash')) {
+                logger.process(`[Translation] [${api.name}] Model ${modelName} is flash and version < 3. Switching to API_2 after 3s...`);
+                await new Promise(r => setTimeout(r, 3000));
+                break; // Skip to next API
+            }
+        }
+        
+        try {
+          const model = currentGenAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          let translated = response.text().trim().replace(/["'.]/g, '');
+          
+          if (translated) {
+            return translated;
+          }
+        } catch (error) {
+          logger.error(`[Translation] [${api.name}] Model ${modelName} failed: ${error.message}`);
+          // 실패 시 다음 모델로 넘어가서 재시도
+        }
       }
-    } catch (error) {
-      logger.error(`[Translation] Model ${modelName} failed: ${error.message}`);
-      // 실패 시 다음 모델로 넘어가서 재시도
-    }
   }
 
   // 모든 모델이 실패한 경우 원본 키워드를 반환
@@ -971,57 +995,81 @@ app.post('/api/analyze', async (req, res) => {
   const modelsToTry = await getBestModels();
   let lastError = null;
 
-  for (let i = 0; i < modelsToTry.length; i++) {
-    const modelName = modelsToTry[i];
-    try {
-      logger.process(`[Analysis] Attempting with ${modelName} (Count: ${topicCount}, Region: ${region}, Search: ${useSearch})`);
-      
-      // [Google Search Grounding] 실시간 검색 도구 활성화 조건
-      // 1. 사용자 설정이 ON 이어야 함
-      // 2. 모델이 도구를 지원해야 함 (lite, gemma 등은 제외)
-      const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
-      const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
+  const apiKey1 = process.env.GEMINI_API_KEY;
+  const apiKey2 = process.env.GEMINI_API_KEY_2;
+  const apis = [
+      { name: 'API_1', key: apiKey1 },
+      { name: 'API_2', key: apiKey2 }
+  ].filter(api => api.key);
 
-      const model = genAI.getGenerativeModel({ 
-          model: modelName,
-          tools: tools
-      });
-      
-      let prompt;
-      if (manualText) {
-          prompt = promptManager.getPrompt('manual_analysis', lang, {
-            manual_text: manualText,
-            topic_count: topicCount
-          });
-      } else {
-          prompt = promptManager.getPrompt('trend_analysis', lang, {
-            trends_data: JSON.stringify(trends),
-            topic_count: topicCount
-          });
-      }
-      // [v2.4] 카니발 방지: 최근 30일 발행 키워드를 negative context로 주입
-      prompt += buildRecentKeywordsContext(lang);
+  for (const api of apis) {
+    const currentGenAI = new GoogleGenerativeAI(api.key);
+    let success = false;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      let text = response.text().trim();
-      text = text.replace(/^```(json)?|```$/gi, "").trim();
-      
-      const firstBrace = text.indexOf('{');
-      const lastBrace = text.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        text = text.slice(firstBrace, lastBrace + 1);
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const modelName = modelsToTry[i];
+
+      if (api.name === 'API_1') {
+          const vMatch = modelName.match(/(\d+\.\d+|\d+)/);
+          if (vMatch && parseFloat(vMatch[1]) < 3 && modelName.includes('flash')) {
+              logger.process(`[Analysis] [${api.name}] Model ${modelName} is flash and version < 3. Switching to API_2 after 3s...`);
+              await new Promise(r => setTimeout(r, 3000));
+              break; // Skip to next API
+          }
       }
-      
-      logger.success(`[Analysis] Successful with ${modelName}`);
-      return res.json(JSON.parse(text));
-    } catch (error) {
-      lastError = error;
-      logger.warn(`[Analysis] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
-      continue;
+      try {
+        logger.process(`[Analysis] [${api.name}] Attempting with ${modelName} (Count: ${topicCount}, Region: ${region}, Search: ${useSearch})`);
+        
+        // [Google Search Grounding] 실시간 검색 도구 활성화 조건
+        // 1. 사용자 설정이 ON 이어야 함
+        // 2. 모델이 도구를 지원해야 함 (lite, gemma 등은 제외)
+        const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
+        const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
+
+        const model = currentGenAI.getGenerativeModel({ 
+            model: modelName,
+            tools: tools
+        });
+        
+        let prompt;
+        if (manualText) {
+            prompt = promptManager.getPrompt('manual_analysis', lang, {
+              manual_text: manualText,
+              topic_count: topicCount
+            });
+        } else {
+            prompt = promptManager.getPrompt('trend_analysis', lang, {
+              trends_data: JSON.stringify(trends),
+              topic_count: topicCount
+            });
+        }
+        // [v2.4] 카니발 방지: 최근 30일 발행 키워드를 negative context로 주입
+        prompt += buildRecentKeywordsContext(lang);
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        let text = response.text().trim();
+        text = text.replace(/^```(json)?|```$/gi, "").trim();
+        
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          text = text.slice(firstBrace, lastBrace + 1);
+        }
+        
+        logger.success(`[Analysis] [${api.name}] Successful with ${modelName}`);
+        success = true;
+        return res.json(JSON.parse(text));
+      } catch (error) {
+        lastError = error;
+        logger.warn(`[Analysis] [${api.name}] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
+        continue;
+      }
     }
+    if (success) break;
   }
-  logger.error(`[Analysis] All models failed`, lastError?.message);
+
+  logger.error(`[Analysis] All models across all APIs failed`, lastError?.message);
   res.status(500).json({ error: 'AI 분석 실패', details: lastError?.message });
 });
 
@@ -1037,71 +1085,95 @@ app.post('/api/generate-post', async (req, res) => {
   let lastError = null;
   let bodyMarkdown = '';
   
+  const apiKey1 = process.env.GEMINI_API_KEY;
+  const apiKey2 = process.env.GEMINI_API_KEY_2;
+  const apis = [
+      { name: 'API_1', key: apiKey1 },
+      { name: 'API_2', key: apiKey2 }
+  ].filter(api => api.key);
+
   // 1. 본문 생성 (이미지 URL 없이 먼저 생성)
-  for (let i = 0; i < modelsToTry.length; i++) {
-    const modelName = modelsToTry[i];
-    try {
-      logger.process(`[Post Gen] Generating content with ${modelName} (Region: ${region}, Search: ${useSearch})`);
-      
-      // [Google Search Grounding] 실시간 검색 도구 활성화 조건
-      const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
-      const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
+  for (const api of apis) {
+    const currentGenAI = new GoogleGenerativeAI(api.key);
+    let success = false;
 
-      const model = genAI.getGenerativeModel({ 
-          model: modelName,
-          tools: tools
-      });
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const modelName = modelsToTry[i];
       
-      const angle = postPlan.angleType || 'guide';
-      const promptKey = `post_writing_${angle}`;
-
-      const prompt = promptManager.getPrompt(promptKey, lang, {
-        mainKeyword: postPlan.mainKeyword,
-        searchIntent: postPlan.searchIntent,
-        contentDepth: postPlan.contentDepth || 'Normal',
-        conclusionType: postPlan.conclusionType || 'Q&A',
-        coreFact: postPlan.coreFact || '최신 트렌드 데이터',
-        coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
-        subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
-        seoKeywords: tags.join(', '),
-        lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
-        coreMessage: postPlan.coreMessage,
-        // 기획 단계 누락 정보 전달 (오류 수정)
-        lifecycle: postPlan.trafficStrategy?.lifecycle || '',
-        category: postPlan.category || '',
-        shoppableKeyword: postPlan.shoppableKeyword || '',
-        faq: Array.isArray(postPlan.faq) ? postPlan.faq.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n\n') : '',
-        metaDescription: postPlan.metaDescription || '',
-        // v2.4: trafficStrategy.targetAudience를 본문 프롬프트의 어휘/예시 톤 가이드로 활용 (없으면 안전한 기본값)
-        targetAudience: postPlan?.trafficStrategy?.targetAudience || postPlan?.targetAudience || '일반 독자',
-        // 이미지 자리에 플레이스홀더 텍스트만 넣도록 유도하거나, 빈 URL 전달
-        context_url_1: "IMAGE_PLACEHOLDER_1",
-        context_url_2: "IMAGE_PLACEHOLDER_2",
-        context_url_3: "IMAGE_PLACEHOLDER_3"
-      });
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      bodyMarkdown = response.text().trim().replace(/^```markdown|```$/g, "").trim();
-      
-      if (bodyMarkdown.startsWith('---')) {
-          const parts = bodyMarkdown.split('---');
-          if (parts.length >= 3) {
-              bodyMarkdown = parts.slice(2).join('---').trim();
+      if (api.name === 'API_1') {
+          const vMatch = modelName.match(/(\d+\.\d+|\d+)/);
+          if (vMatch && parseFloat(vMatch[1]) < 3 && modelName.includes('flash')) {
+              logger.process(`[Post Gen] [${api.name}] Model ${modelName} is flash and version < 3. Switching to API_2 after 3s...`);
+              await new Promise(r => setTimeout(r, 3000));
+              break; // Skip to next API
           }
       }
 
-      logger.success(`[Post Gen] Content generated successfully with ${modelName}`);
-      break; // 성공하면 루프 탈출
-    } catch (error) {
-      lastError = error;
-      logger.warn(`[Post Gen] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
-      continue;
+      try {
+        logger.process(`[Post Gen] [${api.name}] Generating content with ${modelName} (Region: ${region}, Search: ${useSearch})`);
+        
+        // [Google Search Grounding] 실시간 검색 도구 활성화 조건
+        const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
+        const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
+
+        const model = currentGenAI.getGenerativeModel({ 
+            model: modelName,
+            tools: tools
+        });
+        
+        const angle = postPlan.angleType || 'guide';
+        const promptKey = `post_writing_${angle}`;
+
+        const prompt = promptManager.getPrompt(promptKey, lang, {
+          mainKeyword: postPlan.mainKeyword,
+          searchIntent: postPlan.searchIntent,
+          contentDepth: postPlan.contentDepth || 'Normal',
+          conclusionType: postPlan.conclusionType || 'Q&A',
+          coreFact: postPlan.coreFact || '최신 트렌드 데이터',
+          coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
+          subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
+          seoKeywords: tags.join(', '),
+          lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
+          coreMessage: postPlan.coreMessage,
+          // 기획 단계 누락 정보 전달 (오류 수정)
+          lifecycle: postPlan.trafficStrategy?.lifecycle || '',
+          category: postPlan.category || '',
+          shoppableKeyword: postPlan.shoppableKeyword || '',
+          faq: Array.isArray(postPlan.faq) ? postPlan.faq.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n\n') : '',
+          metaDescription: postPlan.metaDescription || '',
+          // v2.4: trafficStrategy.targetAudience를 본문 프롬프트의 어휘/예시 톤 가이드로 활용 (없으면 안전한 기본값)
+          targetAudience: postPlan?.trafficStrategy?.targetAudience || postPlan?.targetAudience || '일반 독자',
+          // 이미지 자리에 플레이스홀더 텍스트만 넣도록 유도하거나, 빈 URL 전달
+          context_url_1: "IMAGE_PLACEHOLDER_1",
+          context_url_2: "IMAGE_PLACEHOLDER_2",
+          context_url_3: "IMAGE_PLACEHOLDER_3"
+        });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        bodyMarkdown = response.text().trim().replace(/^```markdown|```$/g, "").trim();
+        
+        if (bodyMarkdown.startsWith('---')) {
+            const parts = bodyMarkdown.split('---');
+            if (parts.length >= 3) {
+                bodyMarkdown = parts.slice(2).join('---').trim();
+            }
+        }
+
+        logger.success(`[Post Gen] [${api.name}] Content generated successfully with ${modelName}`);
+        success = true;
+        break; // 성공하면 루프 탈출
+      } catch (error) {
+        lastError = error;
+        logger.warn(`[Post Gen] [${api.name}] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
+        continue;
+      }
     }
+    if (success) break;
   }
   
   if (!bodyMarkdown) {
-      logger.error(`[Post Gen] All models failed`, lastError?.message);
+      logger.error(`[Post Gen] All models across all APIs failed`, lastError?.message);
       return res.status(500).json({ error: '본문 생성 실패' });
   }
 

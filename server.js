@@ -150,7 +150,13 @@ async function translateToEnglish(keyword) {
         }
         
         try {
-          const model = currentGenAI.getGenerativeModel({ model: modelName });
+          const model = currentGenAI.getGenerativeModel({ 
+              model: modelName,
+              generationConfig: {
+                  temperature: 0.7,
+                  topP: 0.85
+              }
+          });
           const result = await model.generateContent(prompt);
           const response = await result.response;
           let translated = response.text().trim().replace(/["'.]/g, '');
@@ -1026,13 +1032,16 @@ app.post('/api/analyze', async (req, res) => {
         const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
         const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
 
-        const model = currentGenAI.getGenerativeModel({ 
+        const model = currentGenAI.getGenerativeModel({
             model: modelName,
-            tools: tools
+            tools: tools,
+            generationConfig: {
+                temperature: 0.7,
+                topP: 0.9
+            }
         });
-        
-        let prompt;
-        if (manualText) {
+
+        let prompt;        if (manualText) {
             prompt = promptManager.getPrompt('manual_analysis', lang, {
               manual_text: manualText,
               topic_count: topicCount
@@ -1118,7 +1127,11 @@ app.post('/api/generate-post', async (req, res) => {
 
         const model = currentGenAI.getGenerativeModel({ 
             model: modelName,
-            tools: tools
+            tools: tools,
+            generationConfig: {
+                temperature: 0.75,
+                topP: 0.85
+            }
         });
         
         const angle = postPlan.angleType || 'guide';

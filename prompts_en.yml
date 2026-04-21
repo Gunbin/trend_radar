@@ -14,6 +14,7 @@ tasks:
       1. Plan 1 (Burst / Issue Hunter): Prioritize keys "google", "reddit", "yahoo", "buzzfeed" to capture spiking, traffic-grabbing issues.
       2. Plan 2 (Evergreen / Information Curator): Prioritize keys "redditScams", "redditPoverty", "redditFrugal" to surface durable, high-utility topics (scam avoidance, money tightness, frugal hacks).
       3. Plan 3 (Crossover / Creative Fusion): Combine one Burst-side key (e.g., "google", "reddit", "yahoo") with one Evergreen-side key (e.g., "redditScams", "redditFrugal") to create a brand-new insight (e.g., "trending product + how not to get scammed buying it used").
+         **[Logic & Tone Matching Verification Required] When combining two data points, self-verify that there are no economic/logical contradictions (e.g., combining a % discount policy with an ultra-cheap/cost-effective product, thereby minimizing the actual discount volume). Especially, do not forcefully combine a light-hearted happening or meme/humor topic with a heavy policy or serious financial risk, ruining the mood. If the economic utility drops or the tone and manner clash, do not force the fusion; instead, select the single topic with the largest traffic volume and plan deeply around that.**
       4. Data-shortage fallback (IMPORTANT): If a designated key array is empty or too thin, substitute with the closest-intent key (Burst chain: google → reddit → yahoo → buzzfeed; Evergreen chain: redditScams → redditPoverty → redditFrugal). If still insufficient, return FEWER than {{topic_count}} plans rather than fabricate topics with no data backing.
       5. Anti-Cannibalization (CRITICAL): Always review the '[Published in the last 30 days]' list appended at the bottom of the prompt. NEVER generate a plan covering the same core keyword or identical topic. Find a completely new angle.
 
@@ -24,7 +25,7 @@ tasks:
          - **[Exception] However, if the original keyword itself provides overwhelming traffic volume or directness, maintain the original rather than forcing a derivation.**
       2. Dynamic Angle Assignment: Choose ONE lowercase English word ('expose', 'guide', or 'compare') that fits the plan best.
       3. Data/Fact-Driven (coreFact): Pull a specific fact or number directly from the [Input Data]. NEVER invent statistics, prices, or counts. If the source has no numbers (e.g., reddit titles only), use the source name, post score, comment count, publish time, rank, or cited outlet as the fact.
-      4. Search Function Integration (Fact Scouting): If the input data is vague or lacks specific numbers/dates, actively use the internal search function to verify the latest facts. Incorporate found background details into the coreFact. (CRITICAL: Never output system texts or symbols like '[Google Search]' anywhere in the final output.)
+      4. Search Function Integration (Fact Scouting): If the input data is vague or lacks specific numbers/dates, actively use the internal search function to verify the latest facts. **At this time, do not just look at the superficial keywords of the incident; grasp the actual public sentiment regarding the issue (whether it's a playful reaction or real anger) and reflect it in the plan.** Incorporate found background details into the coreFact. (CRITICAL: Never output system texts or symbols like '[Google Search]' anywhere in the final output.)
 
       [viralTitles Rules — Transcend Mechanical Formulas & Design Psychological Hooks]
       Assemble titles based on the three directions below, but discard the predictable "A+B=C" word-cloning approach. Like a top-voted community post, capture the reader's raw psychology (anxiety, curiosity, empathy) with sharp vocabulary and multi-dimensional wit to create 'irresistible-to-click' (or 'click-magnet') titles. (~60 chars)
@@ -41,7 +42,8 @@ tasks:
         "_strategic_thinking": [
           "1. Where is the reader most likely to spend money or feel most anxious when searching this keyword?",
           "2. Which angle (expose, guide, compare) can maximize CTR by addressing this anxiety or need?",
-          "3. (If keywords were fused) Does combining the selected keywords provide a practical benefit or clear solution without feeling forced? If there is a contradiction, how will you fix it?"
+          "3. (Add) Does the collected community reaction (e.g., complaints, withdrawal mentions) indicate actual serious consumer damage, or is it an exaggerated joke or meme-like happening? Accurately assess the emotional temperature to determine the post's tone (serious vs. playful).",
+          "4. (If keywords were fused) Does combining the selected keywords provide a practical benefit or clear solution without feeling forced? If there is a contradiction, how will you fix it?"
         ],
         "blogPosts": [
           {
@@ -104,7 +106,8 @@ tasks:
         "_strategic_thinking": [
           "1. Where is the reader most likely to spend money or feel most anxious when searching this keyword?",
           "2. Which angle (expose, guide, compare) can maximize CTR by addressing this anxiety or need?",
-          "3. (If keywords were fused) Does combining the selected keywords provide a practical benefit or clear solution without feeling forced? If there is a contradiction, how will you fix it?"
+          "3. (Add) Does the collected community reaction (e.g., complaints, withdrawal mentions) indicate actual serious consumer damage, or is it an exaggerated joke or meme-like happening? Accurately assess the emotional temperature to determine the post's tone (serious vs. playful).",
+          "4. (If keywords were fused) Does combining the selected keywords provide a practical benefit or clear solution without feeling forced? If there is a contradiction, how will you fix it?"
         ],
         "blogPosts": [
           {

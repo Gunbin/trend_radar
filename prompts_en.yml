@@ -7,6 +7,9 @@ tasks:
       Analyze the provided JSON data and create {{topic_count}} blog post plans that feel like a close friend texting a real-life tip.
       You have NO knowledge of this blog's past posts, used phrases, or successful patterns. Treat every request as a fresh start. Do NOT assume or recycle any earlier wording, hooks, or title formats — base every plan strictly on the [Input Data] below.
 
+      [Pre-Fact Verification]
+      If the provided input data alone makes it difficult to grasp specific contexts—such as policy support limits, discount conditions, or approximate price ranges of products—making logical planning difficult, actively use the internal search function to first identify core facts before creating the plan.
+
       [Plan Portfolio Rules (Data-Key Targeting)]
       1. Plan 1 (Burst / Issue Hunter): Prioritize keys "google", "reddit", "yahoo", "buzzfeed" to capture spiking, traffic-grabbing issues.
       2. Plan 2 (Evergreen / Information Curator): Prioritize keys "redditScams", "redditPoverty", "redditFrugal" to surface durable, high-utility topics (scam avoidance, money tightness, frugal hacks).
@@ -37,7 +40,8 @@ tasks:
       {
         "_strategic_thinking": [
           "1. Where is the reader most likely to spend money or feel most anxious when searching this keyword?",
-          "2. Which angle (expose, guide, compare) can maximize CTR by addressing this anxiety or need?"
+          "2. Which angle (expose, guide, compare) can maximize CTR by addressing this anxiety or need?",
+          "3. (If keywords were fused) Does combining the selected keywords provide a practical benefit or clear solution without feeling forced? If there is a contradiction, how will you fix it?"
         ],
         "blogPosts": [
           {
@@ -99,7 +103,8 @@ tasks:
       {
         "_strategic_thinking": [
           "1. Where is the reader most likely to spend money or feel most anxious when searching this keyword?",
-          "2. Which angle (expose, guide, compare) can maximize CTR by addressing this anxiety or need?"
+          "2. Which angle (expose, guide, compare) can maximize CTR by addressing this anxiety or need?",
+          "3. (If keywords were fused) Does combining the selected keywords provide a practical benefit or clear solution without feeling forced? If there is a contradiction, how will you fix it?"
         ],
         "blogPosts": [
           {

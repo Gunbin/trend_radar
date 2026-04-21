@@ -411,10 +411,11 @@ function appendPublishedIndex(entry) {
 function buildRecentKeywordsContext(lang) {
     const arr = prunePublishedIndex(readPublishedIndex()).filter(it => it.lang === lang);
     if (!arr.length) return '';
-    const lines = arr.slice(-50).map(it => `- ${it.mainKeyword}`).join('\n');
+    // 슬러그를 포함하여 어떤 맥락으로 쓰여졌는지 AI가 유추할 수 있도록 힌트 제공
+    const lines = arr.slice(-50).map(it => `- 키워드: ${it.mainKeyword} (주제 힌트: ${it.slug})`).join('\n');
     return lang === 'ko'
-        ? `\n\n[최근 30일 발행 이력 (중복/유사 주제 금지)]\n${lines}\n`
-        : `\n\n[Published in the last 30 days (DO NOT repeat or paraphrase)]\n${lines}\n`;
+        ? `\n\n[최근 30일 발행 이력 (중복 및 유사 주제 절대 금지)]\n${lines}\n`
+        : `\n\n[Published in the last 30 days (STRICTLY DO NOT repeat or paraphrase these topics)]\n${lines}\n`;
 }
 
 function escapeRegex(s) {
@@ -429,7 +430,7 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
     );
     if (!candidates.length) return markdown;
 
-    // 코드블록 / 인라인코드 / 이미지 / 기존 링크는 보호
+    // 코드블록 / 인라인코드 / 이미지 / 기존 링크 / 마크다운 헤더(TOC 훼손 방지) 보호
     const protections = [];
     const stash = (str) => {
         const idx = protections.length;
@@ -440,7 +441,8 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
         .replace(/```[\s\S]*?```/g, m => stash(m))
         .replace(/`[^`\n]+`/g, m => stash(m))
         .replace(/!\[[^\]]*\]\([^)]+\)/g, m => stash(m))
-        .replace(/\[[^\]]+\]\([^)]+\)/g, m => stash(m));
+        .replace(/\[[^\]]+\]\([^)]+\)/g, m => stash(m))
+        .replace(/^#+\s.+$/gm, m => stash(m)); // 헤더 보호 추가
 
     let injected = 0;
     const MAX_LINKS = 3;
@@ -450,27 +452,28 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
     for (const cand of shuffled) {
         if (injected >= MAX_LINKS) break;
         
-        // coreEntities 대신 mainKeyword 우선 연결. mainKeyword가 너무 길면 coreEntities 활용 방안도 있으나,
-        // 어색한 매칭(예: "정부")을 막기 위해 3글자 이상인 경우만 허용.
-        const keywordsToTry = [cand.mainKeyword, ...(cand.coreEntities || [])].filter(Boolean);
+        // 길이가 긴 단어부터 매칭하여 부분 치환(예: '스마트폰' 매칭 시 '스마트폰 케이스' 내부 치환 방지)을 최소화
+        const keywordsToTry = Array.from(new Set([cand.mainKeyword, ...(cand.coreEntities || [])]
+            .filter(Boolean)
+            .map(String)
+            .map(s => s.trim())))
+            .filter(s => s.length >= 3) // 3글자 이상만 허용
+            .sort((a, b) => b.length - a.length);
         
         for (const ent of keywordsToTry) {
             if (injected >= MAX_LINKS) break;
-            const ek = String(ent).trim();
+            const ek = ent;
+            if (linked.has(ek)) continue;
             
-            // 3글자 미만의 너무 짧은 단어는 무분별한 매칭을 유발하므로 제외
-            if (ek.length < 3 || linked.has(ek)) continue;
-            
-            // 한글/영문 등 텍스트 경계를 고려 (완벽하진 않으나 띄어쓰기나 조사 앞부분 매칭 유도)
-            // 너무 단순한 replace를 막기 위해
-            const re = new RegExp(escapeRegex(ek));
+            // 한글/영문 등 텍스트 경계 고려: 단어의 시작부분에서만 매칭 (앞에 다른 글자가 붙어있지 않은 경우)
+            const re = new RegExp(`(^|[^가-힣a-zA-Z0-9])(${escapeRegex(ek)})`, 'i');
             if (!re.test(working)) continue;
             
             const langSegment = cand.lang === 'en' ? '/en' : '/ko';
             const url = `${baseUrl.replace(/\/$/, '')}${langSegment}/blog/${cand.slug}/`;
             
-            // 첫 번째 매칭되는 단어 하나만 치환 (전역 치환 아님)
-            working = working.replace(re, `[${ek}](${url})`);
+            // 첫 번째 매칭되는 단어 하나만 치환
+            working = working.replace(re, `$1[$2](${url})`);
             linked.add(ek);
             injected++;
             break; // 한 문서당 하나의 링크만 걸기

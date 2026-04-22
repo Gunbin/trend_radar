@@ -391,6 +391,18 @@ function sanitizeSlug(input) {
 
 function makeUniqueSlug(slugCandidate, fallbackCandidate, contextSeed) {
     const cleaned = sanitizeSlug(slugCandidate) || sanitizeSlug(fallbackCandidate) || 'post';
+    // published-index 에 동일 slug 가 없으면 깔끔한 슬러그 그대로 사용
+    try {
+        const existing = readPublishedIndex().map(e => e && e.slug).filter(Boolean);
+        if (!existing.includes(cleaned)) return cleaned;
+    } catch (_) { /* 인덱스 조회 실패 시엔 fallback 로 내려감 */ }
+    // 충돌 시에만 날짜 suffix (YYYYMMDD) 부여. 같은 날 두 번 이상 발생하면 md5 hash 로 최후 fallback.
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const withDate = `${cleaned}-${datePart}`;
+    try {
+        const existing = readPublishedIndex().map(e => e && e.slug).filter(Boolean);
+        if (!existing.includes(withDate)) return withDate;
+    } catch (_) { /* noop */ }
     const hash = crypto
         .createHash('md5')
         .update(`${contextSeed || ''}|${Date.now()}|${Math.random()}`)
@@ -452,13 +464,43 @@ function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
+// 지역명/광의 단어 블랙리스트 — 이런 단어로는 절대 인터널 링크 걸지 않음
+// (예: '경기도' 가 '청년 월세 지원 가이드' 글에 링크되는 엉뚱한 매칭 방지)
+const INTERNAL_LINK_BLACKLIST = new Set([
+    // 광역 지역명
+    '서울', '부산', '인천', '대구', '대전', '광주', '울산', '세종',
+    '경기도', '경기', '강원도', '강원', '충청북도', '충청남도', '충북', '충남',
+    '전라북도', '전라남도', '전북', '전남', '경상북도', '경상남도', '경북', '경남', '제주도', '제주',
+    // 정부/기관 총칭
+    '정부', '국가', '대한민국', '한국', '금융위원회', '금융감독원', '과학기술정보통신부',
+    '문화체육관광부', '환경부', '기상청', '국세청', '보건복지부', '행정안전부',
+    // 추상/광의 단어
+    '정책', '뉴스', '정보', '이슈', '가이드', '방법', '추천', '소식', '최신'
+]);
+
+function injectInternalLinks(markdown, currentSlug, lang, baseUrl, currentTags = []) {
     const candidates = prunePublishedIndex(readPublishedIndex()).filter(it =>
         it.lang === lang &&
         it.slug !== currentSlug &&
         it.mainKeyword // 핵심 키워드 존재 여부 확인
     );
     if (!candidates.length) return markdown;
+
+    const currentTagsLower = (Array.isArray(currentTags) ? currentTags : []).map(t => String(t).toLowerCase().trim());
+
+    // 관련성 점수: 후보의 tags/mainKeyword 와 현재 글의 tags/mainKeyword 가 얼마나 겹치는지
+    const scoreCandidate = (cand) => {
+        let score = 0;
+        const candTagsLower = (Array.isArray(cand.tags) ? cand.tags : []).map(t => String(t).toLowerCase().trim());
+        // 태그 교집합 (1개당 +2점, 최대 6점)
+        const tagOverlap = candTagsLower.filter(t => currentTagsLower.includes(t)).length;
+        score += Math.min(tagOverlap, 3) * 2;
+        // coreEntities 교집합은 작은 가중치
+        const candEnt = (Array.isArray(cand.coreEntities) ? cand.coreEntities : []).map(s => String(s).toLowerCase().trim());
+        const entOverlap = candEnt.filter(e => currentTagsLower.includes(e)).length;
+        score += entOverlap;
+        return score;
+    };
 
     // 코드블록 / 인라인코드 / 이미지 / 기존 링크 / 마크다운 헤더(TOC 훼손 방지) 보호
     const protections = [];
@@ -477,32 +519,48 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl) {
     let injected = 0;
     const MAX_LINKS = 3;
     const linked = new Set();
-    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+    // 관련성 점수 내림차순 → 동점은 랜덤으로 섞어 다양성 확보
+    const ranked = [...candidates]
+        .map(c => ({ c, s: scoreCandidate(c), r: Math.random() }))
+        .sort((a, b) => (b.s - a.s) || (a.r - b.r))
+        .map(x => ({ ...x.c, _score: x.s }));
 
-    for (const cand of shuffled) {
+    for (const cand of ranked) {
         if (injected >= MAX_LINKS) break;
-        
-        // 길이가 긴 단어부터 매칭하여 부분 치환(예: '스마트폰' 매칭 시 '스마트폰 케이스' 내부 치환 방지)을 최소화
+
+        // [의미 매칭 최소 조건]
+        //  - 후보 글에 tags 가 저장돼 있으면: 현재 글의 태그와 최소 1개 교집합 필수
+        //  - 후보 글에 tags 가 없으면(과거 데이터 하위호환): mainKeyword 완전 일치만 허용
+        const candTagsLower = (Array.isArray(cand.tags) ? cand.tags : []).map(t => String(t).toLowerCase().trim());
+        const hasTagOverlap = candTagsLower.some(t => currentTagsLower.includes(t));
+        const mainKwMatch = currentTagsLower.includes(String(cand.mainKeyword || '').toLowerCase().trim());
+        if (candTagsLower.length > 0) {
+            if (!hasTagOverlap) continue;
+        } else {
+            if (!mainKwMatch) continue;
+        }
+
+        // 길이가 긴 단어부터 매칭하여 부분 치환 최소화
         const keywordsToTry = Array.from(new Set([cand.mainKeyword, ...(cand.coreEntities || [])]
             .filter(Boolean)
             .map(String)
             .map(s => s.trim())))
             .filter(s => s.length >= 3) // 3글자 이상만 허용
+            .filter(s => !INTERNAL_LINK_BLACKLIST.has(s)) // 광의/지역명 블랙리스트 차단
             .sort((a, b) => b.length - a.length);
-        
+
         for (const ent of keywordsToTry) {
             if (injected >= MAX_LINKS) break;
             const ek = ent;
             if (linked.has(ek)) continue;
-            
-            // 한글/영문 등 텍스트 경계 고려: 단어의 시작부분에서만 매칭 (앞에 다른 글자가 붙어있지 않은 경우)
+
+            // 한글/영문 등 텍스트 경계 고려: 단어의 시작부분에서만 매칭
             const re = new RegExp(`(^|[^가-힣a-zA-Z0-9])(${escapeRegex(ek)})`, 'i');
             if (!re.test(working)) continue;
-            
+
             const langSegment = cand.lang === 'en' ? '/en' : '/ko';
             const url = `${baseUrl.replace(/\/$/, '')}${langSegment}/blog/${cand.slug}/`;
-            
-            // 첫 번째 매칭되는 단어 하나만 치환
+
             working = working.replace(re, `$1[$2](${url})`);
             linked.add(ek);
             injected++;
@@ -542,15 +600,18 @@ function buildExpandedTags(postPlan) {
         const s = String(v).trim().replace(/\s+/g, ' ');
         if (s.length < 2 || s.length > 30) return;
         if (collected.includes(s)) return;
-        // 너무 일반적인 단어 차단
-        if (/^(한국|오늘|뉴스|정보|이슈)$/i.test(s)) return;
+        // 너무 일반적인 단어 차단 (확장 블랙리스트)
+        if (/^(한국|오늘|뉴스|정보|이슈|정책|행사|이벤트|추천|가이드|정리|방법|최신|소식)$/i.test(s)) return;
+        // substring 중복 제거: 이미 수집된 태그를 포함하거나, 그 태그에 포함되는 경우 skip
+        // (예: '거문고자리 유성우' 이미 있는데 '4월 거문고자리 유성우' 들어오면 skip)
+        if (collected.some(c => c.includes(s) || s.includes(c))) return;
         collected.push(s);
     };
     push(postPlan?.mainKeyword);
     if (Array.isArray(postPlan?.seoKeywords)) postPlan.seoKeywords.forEach(push);
     if (Array.isArray(postPlan?.lsiKeywords)) postPlan.lsiKeywords.slice(0, 3).forEach(push);
     if (Array.isArray(postPlan?.coreEntities)) postPlan.coreEntities.slice(0, 3).forEach(push);
-    return collected.slice(0, 8);
+    return collected.slice(0, 5);
 }
 
 function stripCloudinaryQuery(url) {
@@ -1278,7 +1339,9 @@ app.post('/api/generate-post', async (req, res) => {
           const realImageUrl = await getRandomImage(searchKeyword, false, skipTranslation, usedImageUrls);
           
           if (realImageUrl) {
-              const replacement = `![${altText}](${realImageUrl})`;
+              // [S2] 영문 title 속성 보존 → 이미지 SEO 신호 유지
+              const titlePart = englishKeyword ? ` "${englishKeyword.replace(/"/g, '\\"')}"` : '';
+              const replacement = `![${altText}](${realImageUrl}${titlePart})`;
               bodyMarkdown = bodyMarkdown.replace(fullMatch, replacement);
           }
       }
@@ -1303,8 +1366,12 @@ app.post('/api/generate-post', async (req, res) => {
 
       const realImageUrl = await getRandomImage(fallbackSearchKeyword, false, skipFallbackTranslation, usedImageUrls);
       if (realImageUrl) {
-          // 이미지 태그로 감싸서 치환
-          const replacement = `\n\n![${postPlan.mainKeyword}](${realImageUrl})\n\n`;
+          // [S2] fallback 경로도 title 속성 포함 (imageSearchKeywords 우선, 없으면 mainKeyword)
+          const fallbackEng = (region !== 'US' && postPlan.imageSearchKeywords && postPlan.imageSearchKeywords.length)
+              ? postPlan.imageSearchKeywords[0]
+              : fallbackSearchKeyword;
+          const titlePart = fallbackEng ? ` "${String(fallbackEng).replace(/"/g, '\\"')}"` : '';
+          const replacement = `\n\n![${postPlan.mainKeyword}](${realImageUrl}${titlePart})\n\n`;
           bodyMarkdown = bodyMarkdown.replace(fullMatch, replacement);
       }
   }
@@ -1325,14 +1392,75 @@ app.post('/api/generate-post', async (req, res) => {
 
   // [v2.4] 본문 후처리: ① 인터널 링크 자동 삽입 → ② 쿠팡 파트너스 박스
   const baseUrl = 'https://gunbin.github.io';
-  bodyMarkdown = injectInternalLinks(bodyMarkdown, finalSlug, lang, baseUrl);
-  const coupangBox = buildCoupangBox(postPlan.shoppableKeyword, selectedCategory, lang);
-  if (bodyMarkdown.includes('{{coupangLink}}')) {
-      if (coupangBox) {
-          bodyMarkdown = bodyMarkdown.replace('{{coupangLink}}', '\n' + coupangBox + '\n');
+  // [S1] 현재 글의 태그를 전달해 의미 매칭 품질 향상
+  bodyMarkdown = injectInternalLinks(bodyMarkdown, finalSlug, lang, baseUrl, tags);
+
+  // [C1] 본문에 유동 삽입된 `{{coupangLink:상품명}}` 마커를 우선 처리
+  //      (AI가 본문 맥락에 맞춰 스스로 삽입한 상품명으로 쿠팡 박스 생성)
+  const dynamicCoupangRegex = /\{\{coupangLink:([^}]+?)\}\}/g;
+  const dynamicMatches = [...bodyMarkdown.matchAll(dynamicCoupangRegex)];
+  let dynamicInjected = 0;
+  for (const m of dynamicMatches) {
+      const rawKeyword = (m[1] || '').trim();
+      if (!rawKeyword) continue;
+      // 카테고리 미적격이거나 박스 생성 실패 시 마커와 주변 공백을 제거
+      const box = buildCoupangBox(rawKeyword, selectedCategory, lang);
+      const markerPattern = new RegExp(`\\n*[ \\t]*${escapeRegex(m[0])}[ \\t]*\\n*`, '');
+      if (box) {
+          bodyMarkdown = bodyMarkdown.replace(markerPattern, '\n\n' + box + '\n\n');
+          dynamicInjected++;
       } else {
-          // 쿠팡 박스가 생성되지 않으면 (shoppableKeyword 없음 또는 비대상 카테고리) 찌꺼기 텍스트 제거
-          bodyMarkdown = bodyMarkdown.replace('{{coupangLink}}', '');
+          bodyMarkdown = bodyMarkdown.replace(markerPattern, '\n\n');
+      }
+  }
+  if (dynamicInjected > 0) {
+      logger.success(`[Coupang] Dynamic box injected (${dynamicInjected}x) from in-body markers`);
+  }
+
+  // [하위 호환] 기존 {{coupangLink}} 단독 마커 처리 (기획단계 shoppableKeyword 기반)
+  const legacyMarker = '{{coupangLink}}';
+  if (bodyMarkdown.includes(legacyMarker)) {
+      const legacyBox = buildCoupangBox(postPlan.shoppableKeyword, selectedCategory, lang);
+      // 앞뒤 빈 줄까지 흡수하도록 패턴 매칭 (이중 공백 방지)
+      const legacyPattern = /\n*[ \t]*\{\{coupangLink\}\}[ \t]*\n*/g;
+      if (legacyBox && dynamicInjected === 0) {
+          bodyMarkdown = bodyMarkdown.replace(legacyPattern, '\n\n' + legacyBox + '\n\n');
+      } else {
+          // 이미 동적 박스가 삽입됐거나 기획단계 키워드가 없으면 마커만 제거
+          bodyMarkdown = bodyMarkdown.replace(legacyPattern, '\n\n');
+      }
+  }
+
+  // [C2] 참고자료 `<small>...</small>` 블록에서 URL 없는 단독 출처 라인 제거
+  //      (존재하지 않는 보고서/예보명 등 AI fabrication 방지)
+  bodyMarkdown = bodyMarkdown.replace(/<small>([\s\S]*?)<\/small>/g, (full, inner) => {
+      if (!/\[참고자료\]/.test(inner)) return full; // 참고자료 블록이 아니면 손대지 않음
+      const lines = inner.split(/<br\s*\/?>/i);
+      const kept = lines.filter(line => {
+          const trimmed = line.trim();
+          if (!trimmed) return true; // 빈 줄은 포맷 유지용
+          // 헤더 라벨/이탤릭 태그 라인은 보존
+          if (/^(<i>\s*)?\[참고자료\]/.test(trimmed)) return true;
+          if (/^(<\/i>|<i>)$/.test(trimmed)) return true;
+          // 출처 항목인 경우: 마크다운 링크 `[...](http...)` 포함 여부 체크
+          const isSourceItem = /^-\s/.test(trimmed);
+          if (!isSourceItem) return true; // 출처 항목이 아니면 그대로 유지
+          return /\]\(\s*https?:\/\//i.test(trimmed);
+      });
+      return `<small>${kept.join('<br>')}</small>`;
+  });
+
+  // 연속 빈 줄 정규화 (쿠팡 박스/마커 제거로 인한 3줄 이상 공백 정리)
+  bodyMarkdown = bodyMarkdown.replace(/\n{3,}/g, '\n\n').trim();
+
+  // [S5] 목록 페이지 요약 제어용 `<!--more-->` 자동 삽입 (첫 H2 직전)
+  if (!bodyMarkdown.includes('<!--more-->')) {
+      const firstH2Match = bodyMarkdown.match(/^##\s/m);
+      if (firstH2Match && typeof firstH2Match.index === 'number' && firstH2Match.index > 0) {
+          const pivot = firstH2Match.index;
+          bodyMarkdown = bodyMarkdown.slice(0, pivot).trimEnd() +
+              '\n\n<!--more-->\n\n' +
+              bodyMarkdown.slice(pivot);
       }
   }
 
@@ -1369,6 +1497,8 @@ ${faqYaml}---
     mainKeyword: postPlan.mainKeyword || '',
     lsiKeywords: Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords : [],
     coreEntities: Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities : [],
+    // [S1] 인터널 링크 의미 매칭용 — 현재 글의 tags 를 인덱스에 저장
+    tags: Array.isArray(tags) ? tags : [],
     category: selectedCategory,
     lang
   };

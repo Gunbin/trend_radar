@@ -638,21 +638,54 @@ async function getSignalTrends() {
   });
 }
 
-// 3. Signal.bz (한국 전용)
+// 3. 나무위키 실시간 검색어 (한국 전용 - 아카라이브 실검알려주는채널 크롤링)
 async function getNamuwikiTrends() {
-  return fetchWithRetry('Signal.bz', async () => {
-    const res = await axios.get('https://api.signal.bz/news/realtime', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-      timeout: 5000
+  return fetchWithRetry('Namuwiki Trends', async () => {
+    const { body } = await gotScraping({
+        url: 'https://arca.live/b/namuhotnow',
+        headerGeneratorOptions: {
+            browsers: [
+                { name: 'chrome', minVersion: 110 },
+                { name: 'safari', minVersion: 15 },
+                { name: 'firefox', minVersion: 110 }
+            ],
+            devices: ['desktop', 'mobile'], 
+            locales: ['ko-KR', 'ko']
+        },
+        timeout: { request: 10000 }
     });
-    if (res.data && res.data.top10) {
-        return res.data.top10.slice(0, 10).map((item) => ({
-            rank: item.rank, keyword: item.keyword,
-            status: item.state === 's' ? 'SAME' : (item.state === '+' ? 'UP' : 'DOWN'),
-            summaryUrl: item.summary || null
-        }));
-    }
-    return [];
+    
+    const $ = cheerio.load(body);
+    const trends = [];
+    
+    $('.vrow').each((i, el) => {
+        if (trends.length >= 10) return false;
+        
+        // 공지사항 제외
+        if ($(el).hasClass('notice')) return true;
+        
+        const titleNode = $(el).find('.title');
+        let title = titleNode.text().trim();
+        let link = titleNode.attr('href') || '';
+        
+        if (link && !link.startsWith('http')) {
+            link = 'https://arca.live' + link;
+        }
+        
+        // 제목에서 댓글수 '[12]' 등 제거
+        title = title.replace(/\[\d+\]$/, '').trim();
+        
+        if (title) {
+            trends.push({
+                rank: trends.length + 1,
+                keyword: title,
+                status: 'NEW', // 아카라이브 게시판 특성상 상태(UP/DOWN)가 명확하지 않으므로 기본값
+                summaryUrl: link
+            });
+        }
+    });
+    
+    return trends;
   });
 }
 
@@ -970,12 +1003,21 @@ app.get('/api/trends', async (req, res) => {
       checkSource('redditFrugal') ? getRedditFrugal() : Promise.resolve([]),
       checkSource('buzzfeed') ? getBuzzFeedTrending() : Promise.resolve([])
     ]);
-    res.json({ 
-        timestamp: new Date().toISOString(), 
-        region, 
-        google, reddit, yahoo, redditScams, redditPoverty, redditFrugal, buzzfeed
+    res.json({
+        timestamp: new Date().toISOString(),
+        region,
+        google, reddit, yahoo, redditScams, redditPoverty, redditFrugal, buzzfeed,
+        sourceDescriptions: {
+            google: "Google Trends. Massive societal issues, news, and sports trends experiencing explosive search volume across the region.",
+            reddit: "Reddit r/popular. Real-time overall popular posts, memes, and hot issues from the largest English-speaking community.",
+            yahoo: "Yahoo News. Trends centered around major current affairs, economy, and political news in the English-speaking world.",
+            redditScams: "Reddit r/Scams. Information to prevent financial loss (Loss Aversion) for readers, such as the latest scam methods and scam warnings.",
+            redditPoverty: "Reddit r/povertyfinance. Welfare and survival information such as financial tips, government subsidies, and survival strategies for low-income individuals.",
+            redditFrugal: "Reddit r/Frugal. Practical life tips for smart consumers, including extreme money-saving tips and cost-effective product recommendations.",
+            buzzfeed: "BuzzFeed Trending. Light entertainment, Hollywood gossip, TikTok life hacks, and psychological tests going viral in the US."
+        }
     });
-  } else {
+    } else {
     const [google, signal, namu, fss, policy, ppomppu, instiz] = await Promise.all([
       checkSource('google') ? getGoogleTrends('KR') : Promise.resolve([]),
       checkSource('nate') ? getSignalTrends() : Promise.resolve([]),
@@ -988,11 +1030,18 @@ app.get('/api/trends', async (req, res) => {
     res.json({
         timestamp: new Date().toISOString(),
         region,
-        google, signal, namu, fss, policy, ppomppu, instiz
+        google, signal, namu, fss, policy, ppomppu, instiz,
+        sourceDescriptions: {
+            google: "구글 트렌드 (한국). 하루 동안 한국 전체를 뒤흔든 대형 사건사고, 정치, 사회, IT 등 대중적인 거시적 트렌드.",
+            signal: "네이트 실시간 검색어. 포털 사이트 특성상 연예, 가십, 방송 프로그램, 사건사고 키워드가 주를 이룸.",
+            namu: "나무위키 실시간 검색어 (아카라이브 기반). 인물 논란, 특정 커뮤니티 밈(Meme), 서브컬처, 인터넷 방송인(유튜버) 등 파급력이 강하고 깊이 있는 정보 탐색이 동반되는 키워드.",
+            fss: "금융감독원 소비자경보. 신종 보이스피싱, 코인 사기 수법, 불법 사금융 등 독자의 금전적 손실(Loss Aversion)을 방지하기 위한 경고성 정보.",
+            policy: "대한민국 정책브리핑. 정부 보조금, 청년 지원금, 세금 환급 등 독자의 금전적 이득과 실생활에 직결되는 정책 정보(Welfare).",
+            ppomppu: "뽐뿌 정보/강좌 게시판. 재테크, 핫딜, 가성비에 매우 민감한 스마트 컨슈머들이 공유하는 생활 밀착형 꿀팁 및 유용한 정보.",
+            instiz: "인스티즈 핫(HOT) 게시판. 10~20대 여성 중심 커뮤니티의 실시간 바이럴 이슈, 유머, 연예인, 가벼운 일상 해프닝."
+        }
     });  }
-});
-
-app.post('/api/analyze', async (req, res) => {
+    });app.post('/api/analyze', async (req, res) => {
   const { trends, manualText, config, region = 'KR' } = req.body; 
   const topicCount = config?.topicCount || 3;
   const useSearch = config?.useSearch !== false; // 기본값 true

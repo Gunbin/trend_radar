@@ -37,7 +37,7 @@ promptManager.getPrompt('trend_analysis', lang, {
 |----|------------------------|-------------------------|
 | `google` | `getGoogleTrends('KR')` | `rank`, `keyword`, `traffic`, `image`, `newsItems[]` (`title`, `url`, `source`) |
 | `signal` | `getSignalTrends` (Nate) | `rank`, `keyword`, `status`, `change` |
-| `namu` | `getNamuwikiTrends` (signal.bz) | `rank`, `keyword`, `status`, `summaryUrl` |
+| `namu` | `getNamuwikiTrends` (Arca Live) | `rank`, `keyword`, `status`, `summaryUrl` |
 | `fss` | `getFssAlerts` | `rank`, `keyword`, `url`, `pubDate` |
 | `policy` | `getPolicyBriefing` | `rank`, `keyword`, `url`, `pubDate` |
 | `ppomppu` | `getPpomppuHotDeals` | `rank`, `keyword`, `url` |
@@ -81,7 +81,7 @@ promptManager.getPrompt('trend_analysis', lang, {
     { "rank": 1, "keyword": "네이트 실시간 검색어", "status": "UP", "change": "3" }
   ],
   "namu": [
-    { "rank": 1, "keyword": "signal.bz 키워드", "status": "UP", "summaryUrl": "https://..." }
+    { "rank": 1, "keyword": "나무위키 실검 키워드", "status": "NEW", "summaryUrl": "https://..." }
   ],
   "fss": [
     { "rank": 1, "keyword": "금융감독원 소비자경보 제목...", "url": "https://www.fss.or.kr/...", "pubDate": "2026-04-19T..." }

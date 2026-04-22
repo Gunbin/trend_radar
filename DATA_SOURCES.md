@@ -13,9 +13,9 @@
 *   **[소스 2] Nate Trends**
     *   **방식:** `JSON API` (https://www.nate.com/js/data/jsonLiveKeywordDataV1.js)
     *   **내용:** 네이트 포털 실시간 검색어 1~10위 데이터. 포털 특성상 연예, 사건사고 키워드가 주를 이룸.
-*   **[소스 3] Signal.bz (Namuwiki)**
-    *   **방식:** `JSON API` (https://api.signal.bz/news/realtime)
-    *   **내용:** 나무위키 기반 실시간 검색어 및 이슈 요약. 서브컬처, 게임, 유튜버, 특정 커뮤니티 이슈 포착에 유리.
+*   **[소스 3] 아카라이브 실검알려주는채널 (Namuwiki)**
+    *   **방식:** `Web Crawling` (https://arca.live/b/namuhotnow)
+    *   **내용:** 나무위키 실제 실시간 검색어 기록 게시판 크롤링. 서브컬처, 게임, 유튜버, 특정 커뮤니티 이슈 포착에 유리.
 
 ### 2. 에버그린 및 실생활 정보 (Evergreen / Information)
 *   **[소스 4] 금융감독원 소비자경보 (호구 방지 / Loss Aversion)**
@@ -70,9 +70,9 @@
 
 | 분류 | 사용 기술 | 비고 |
 | :--- | :--- | :--- |
-| **JSON API** | `axios.get` | Reddit, Nate, Signal.bz 등. 서버 부하가 적고 파싱이 빠르며 가장 안정적임. |
+| **JSON API** | `axios.get` | Reddit, Nate 등. 서버 부하가 적고 파싱이 빠르며 가장 안정적임. |
 | **RSS Feed** | `xml2js` 파서 | Google Trends, Yahoo News, Policy Briefing 등. 구조화된 XML을 JSON 객체로 변환하여 사용. |
-| **Web Crawling** | `cheerio`, `iconv-lite` | FSS, Ppomppu, Instiz 등. API나 RSS를 제공하지 않는 사이트의 HTML DOM 구조를 직접 분석하여 긁어옴. 한글 인코딩(EUC-KR) 처리 포함. |
+| **Web Crawling** | `cheerio`, `iconv-lite` | Arca Live, FSS, Ppomppu, Instiz 등. API나 RSS를 제공하지 않는 사이트의 HTML DOM 구조를 직접 분석하여 긁어옴. 한글 인코딩(EUC-KR) 처리 포함. |
 
 **💡 개발자 노트:**
 * 모든 소스는 `fetchWithRetry` 헬퍼 함수를 통해 래핑되어 있어 일시적인 네트워크 오류 발생 시 자동 재시도합니다.

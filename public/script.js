@@ -577,10 +577,15 @@ function renderAIAnalysis(data) {
                                 <div class="post-title" style="color:var(--text-color)">${title}</div>
                                 <div class="post-reason"><span class="highlight-tag">CATEGORY:</span> ${post.category}</div>
                                 <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${post.searchIntent}</div>
+                                <div class="post-reason"><span class="highlight-tag">TARGET_AUDIENCE:</span> ${post.trafficStrategy?.targetAudience || 'N/A'}</div>
                                 <div class="post-meta">
                                     <div class="meta-item"><span>MAIN_TREND:</span> <strong style="color:var(--namu-color)">${post.mainKeyword}</strong></div>
                                     <div class="meta-item"><span>ANGLE:</span> ${post.angleType || 'guide'}</div>
+                                    <div class="meta-item"><span>LIFECYCLE:</span> ${post.trafficStrategy?.lifecycle || 'N/A'}</div>
+                                    <div class="meta-item"><span>DEPTH:</span> ${post.contentDepth || 'N/A'}</div>
+                                    <div class="meta-item"><span>SHOPPABLE_ITEM:</span> ${post.shoppableKeyword || 'None'}</div>
                                     <div class="meta-item"><span>CORE_FACT:</span> ${post.coreFact}</div>
+                                    <div class="meta-item"><span>CORE_ENTITIES:</span> ${(Array.isArray(post.coreEntities) ? post.coreEntities : []).join(', ')}</div>
                                     <div class="meta-item"><span>SEO_KEYWORDS:</span> ${(post.seoKeywords || []).join(', ')}</div>
                                     ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).join(', ')}</div>` : ''}
                                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${post.coreMessage}</div>

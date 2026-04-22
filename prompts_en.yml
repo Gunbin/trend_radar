@@ -1,6 +1,10 @@
 # TrendRadar v2.4: AI Viral Marketer & SEO/GEO/AIO Ultimate Prompt (EN)
 
 tasks:
+  # ===================================================================== #
+  #                       Planning Phase                                  #
+  # ===================================================================== #
+
   trend_analysis:
     persona: "A strategic content director who sees through the essence of trends and decides the absolute best 'narrative angle' to deliver them to readers."
     instruction: |
@@ -136,12 +140,17 @@ tasks:
             ],
             "subTopics": ["Topic 1", "Topic 2", "Topic 3..."],
             "coreEntities": ["Entities"],
+            "seoKeywords": ["SEO keyword 1", "keyword 2", "keyword 3"],
             "lsiKeywords": ["lsi-1", "lsi-2", "lsi-3"],
             "imageSearchKeywords": ["keyword-1", "keyword-2"],
             "coreMessage": "One real piece of advice"
           }
         ]
       }
+
+  # ===================================================================== #
+  #                       Posting Phase                                   #
+  # ===================================================================== #
 
   post_writing_expose:
     persona: "A close friend who is frustrated that you might get scammed or misled, and points out the cold hard facts. Firm but caring."
@@ -174,13 +183,18 @@ tasks:
       - "**[🔥 System Anti-Overfitting Override]:** You must not remember patterns from posts you've written before, but you MUST avoid 'AI cliches'. Before generating the final markdown, censor yourself: \"Is the expression I'm about to use a predictable metaphor or sentence structure mechanically used in thousands of blogs?\" If so, discard it immediately and rewrite it in raw, rough, but logical human language. Strictly limit the mechanical repetition of structural clichés, such as placing the same type of conjunctions (e.g., 'However', 'Moreover', 'Furthermore') at the beginning of every paragraph."
     template: |
       [Post Plan]
+      - Category: {{category}}
       - Keyword: {{mainKeyword}}
+      - Search Intent: {{searchIntent}}
       - Target Audience: {{targetAudience}}
       - Depth/Conclusion: {{contentDepth}} / {{conclusionType}}
+      - Lifecycle: {{lifecycle}}
+      - Shoppable Product: {{shoppableKeyword}}
       - Core Fact: {{coreFact}}
       - Entities: {{coreEntities}}
       - Sub-topics: {{subTopics}}
-      - LSI: {{lsiKeywords}}
+      - SEO Keywords: {{seoKeywords}}
+      - LSI Keywords: {{lsiKeywords}}
       - Message: {{coreMessage}}
       - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
       - FAQ Data: {{faq}}
@@ -217,13 +231,18 @@ tasks:
       - "**[🔥 System Anti-Overfitting Override]:** You must not remember patterns from posts you've written before, but you MUST avoid 'AI cliches'. Before generating the final markdown, censor yourself: \"Is the expression I'm about to use a predictable metaphor or sentence structure mechanically used in thousands of blogs?\" If so, discard it immediately and rewrite it in raw, rough, but logical human language. Strictly limit the mechanical repetition of structural clichés, such as placing the same type of conjunctions (e.g., 'However', 'Moreover', 'Furthermore') at the beginning of every paragraph."
     template: |
       [Post Plan]
+      - Category: {{category}}
       - Keyword: {{mainKeyword}}
+      - Search Intent: {{searchIntent}}
       - Target Audience: {{targetAudience}}
       - Depth/Conclusion: {{contentDepth}} / {{conclusionType}}
+      - Lifecycle: {{lifecycle}}
+      - Shoppable Product: {{shoppableKeyword}}
       - Core Fact: {{coreFact}}
       - Entities: {{coreEntities}}
       - Sub-topics: {{subTopics}}
-      - LSI: {{lsiKeywords}}
+      - SEO Keywords: {{seoKeywords}}
+      - LSI Keywords: {{lsiKeywords}}
       - Message: {{coreMessage}}
       - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
       - FAQ Data: {{faq}}
@@ -260,13 +279,18 @@ tasks:
       - "**[🔥 System Anti-Overfitting Override]:** You must not remember patterns from posts you've written before, but you MUST avoid 'AI cliches'. Before generating the final markdown, censor yourself: \"Is the expression I'm about to use a predictable metaphor or sentence structure mechanically used in thousands of blogs?\" If so, discard it immediately and rewrite it in raw, rough, but logical human language. Strictly limit the mechanical repetition of structural clichés, such as placing the same type of conjunctions (e.g., 'However', 'Moreover', 'Furthermore') at the beginning of every paragraph."
     template: |
       [Post Plan]
+      - Category: {{category}}
       - Keyword: {{mainKeyword}}
+      - Search Intent: {{searchIntent}}
       - Target Audience: {{targetAudience}}
       - Depth/Conclusion: {{contentDepth}} / {{conclusionType}}
+      - Lifecycle: {{lifecycle}}
+      - Shoppable Product: {{shoppableKeyword}}
       - Core Fact: {{coreFact}}
       - Entities: {{coreEntities}}
       - Sub-topics: {{subTopics}}
-      - LSI: {{lsiKeywords}}
+      - SEO Keywords: {{seoKeywords}}
+      - LSI Keywords: {{lsiKeywords}}
       - Message: {{coreMessage}}
       - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
       - FAQ Data: {{faq}}

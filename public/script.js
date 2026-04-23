@@ -561,49 +561,173 @@ document.getElementById('close-ai').addEventListener('click', () => {
     document.getElementById('ai-section').classList.add('hidden');
 });
 
+// [v2.7] priority 기반 정렬 순서 (primary → secondary → review)
+const PRIORITY_RANK = { primary: 1, secondary: 2, review: 3 };
+
+// [v2.7] priority 뱃지 메타 (라벨 + 아이콘)
+const PRIORITY_META = {
+    primary:   { label: 'PRIMARY',   icon: '■', title: '메인 기획 적합 (painScore≥9 & confidence=High)' },
+    secondary: { label: 'SECONDARY', icon: '▲', title: '보조 기획 허용 (painScore 6~8 또는 confidence=Medium)' },
+    review:    { label: 'REVIEW',    icon: '?', title: '재검토 권장 (painScore<6 또는 confidence=Low 또는 필드 누락)' }
+};
+
+// HTML 이스케이프 (문자열 값 삽입 안전용)
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function renderAIAnalysis(data) {
     const aiContent = document.getElementById('ai-content');
-    
-    let html = `
+
+    // [v2.7] 기획안을 priority 기준으로 정렬 (원본 순서는 index 로 보존)
+    const sortedPosts = (data.blogPosts || [])
+        .map((post, origIndex) => ({ post, origIndex }))
+        .sort((a, b) => {
+            const ra = PRIORITY_RANK[a.post._meta?.priority] || 99;
+            const rb = PRIORITY_RANK[b.post._meta?.priority] || 99;
+            if (ra !== rb) return ra - rb;
+            // 같은 priority 내에서는 painScore 높은 순
+            const pa = a.post.painScore ?? -1;
+            const pb = b.post.painScore ?? -1;
+            return pb - pa;
+        });
+
+    // [v2.7] 우선순위별 카운트 (통계 바)
+    const counts = { primary: 0, secondary: 0, review: 0, unknown: 0 };
+    for (const { post } of sortedPosts) {
+        const p = post._meta?.priority;
+        if (counts[p] !== undefined) counts[p]++;
+        else counts.unknown++;
+    }
+
+    const statsBar = `
+        <div class="priority-stats-bar">
+            <div class="stats-left">
+                <span class="stats-label">QUALITY_DISTRIBUTION:</span>
+                <span class="stat-chip chip-primary" title="메인 기획 적합">
+                    ${PRIORITY_META.primary.icon} PRIMARY ${counts.primary}
+                </span>
+                <span class="stat-chip chip-secondary" title="보조 기획 허용">
+                    ${PRIORITY_META.secondary.icon} SECONDARY ${counts.secondary}
+                </span>
+                <span class="stat-chip chip-review" title="재검토 권장">
+                    ${PRIORITY_META.review.icon} REVIEW ${counts.review}
+                </span>
+                ${counts.unknown ? `<span class="stat-chip chip-unknown">? LEGACY ${counts.unknown}</span>` : ''}
+            </div>
+            <div class="stats-right">
+                <label class="filter-toggle">
+                    <input type="checkbox" id="hide-review-toggle" onchange="togglePriorityFilter()" />
+                    <span>HIDE REVIEW</span>
+                </label>
+            </div>
+        </div>
+    `;
+
+    const cardsHtml = sortedPosts.map(({ post, origIndex }) => {
+        const title = post.viralTitles
+            ? (post.viralTitles.curiosity || post.viralTitles.dataDriven || post.viralTitles.solution
+                || post.viralTitles.benefit || post.viralTitles.fomo || post.mainKeyword)
+            : (post.viralTitle || post.mainKeyword);
+
+        // [v2.7] priority 뱃지
+        const priority = post._meta?.priority || 'unknown';
+        const meta = PRIORITY_META[priority];
+        const badgeHtml = meta
+            ? `<span class="priority-badge badge-${priority}" title="${esc(meta.title)}">${meta.icon} ${meta.label}</span>`
+            : `<span class="priority-badge badge-unknown" title="legacy 응답 — painScore/queryConfidence 필드 없음">? LEGACY</span>`;
+
+        // [v2.7] painScore / queryConfidence
+        const painScore = Number.isFinite(post.painScore) ? post.painScore : null;
+        const confidence = typeof post.queryConfidence === 'string' ? post.queryConfidence : null;
+        const painBadge = painScore !== null
+            ? `<span class="metric-chip" title="심각성+시급성+타격 합산 (3~15)">PAIN: <strong>${painScore}</strong>/15</span>`
+            : '';
+        const confBadge = confidence
+            ? `<span class="metric-chip confidence-${confidence.toLowerCase()}" title="실제 검색 수요 확신도">CONF: <strong>${esc(confidence)}</strong></span>`
+            : '';
+
+        // [v2.7] serpDifferentiation — 강조 박스
+        const serpGap = post.serpDifferentiation && post.serpDifferentiation.trim()
+            ? `<div class="serp-gap-box" title="이 글만이 다룰 정보 격차 — 도입부에서 선제 공략">
+                    <div class="serp-gap-label">&gt;&gt; SERP_GAP</div>
+                    <div class="serp-gap-body">${esc(post.serpDifferentiation)}</div>
+                </div>`
+            : '';
+
+        // [v2.7] searchBehaviorQueries — 칩 태그
+        const queries = Array.isArray(post.searchBehaviorQueries) ? post.searchBehaviorQueries.filter(Boolean) : [];
+        const queriesHtml = queries.length
+            ? `<div class="search-queries-row" title="독자가 실제 검색창에 칠 법한 구어체 문장">
+                    <span class="queries-label">SEARCH_BEHAVIOR:</span>
+                    ${queries.map(q => `<span class="query-chip">"${esc(q)}"</span>`).join('')}
+                </div>`
+            : '';
+
+        const cardClasses = ['post-card', 'marketing-card', `priority-${priority}`];
+
+        return `
+        <div class="${cardClasses.join(' ')}" data-priority="${priority}">
+            <div class="post-index">0${origIndex + 1}</div>
+            <div class="post-main">
+                <div class="card-header-row">
+                    ${badgeHtml}
+                    ${painBadge}
+                    ${confBadge}
+                </div>
+                <div class="post-title" style="color:var(--text-color)">${esc(title)}</div>
+                ${serpGap}
+                <div class="post-reason"><span class="highlight-tag">CATEGORY:</span> ${esc(post.category)}</div>
+                <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${esc(post.searchIntent)}</div>
+                <div class="post-reason"><span class="highlight-tag">TARGET_AUDIENCE:</span> ${esc(post.trafficStrategy?.targetAudience || 'N/A')}</div>
+                ${queriesHtml}
+                <div class="post-meta">
+                    <div class="meta-item"><span>MAIN_TREND:</span> <strong style="color:var(--namu-color)">${esc(post.mainKeyword)}</strong></div>
+                    <div class="meta-item"><span>ANGLE:</span> ${esc(post.angleType || 'guide')}</div>
+                    <div class="meta-item"><span>LIFECYCLE:</span> ${esc(post.trafficStrategy?.lifecycle || 'N/A')}</div>
+                    <div class="meta-item"><span>DEPTH:</span> ${esc(post.contentDepth || 'N/A')}</div>
+                    <div class="meta-item"><span>SHOPPABLE_ITEM:</span> ${esc(post.shoppableKeyword || 'None')}</div>
+                    <div class="meta-item"><span>CORE_FACT:</span> ${esc(post.coreFact)}</div>
+                    <div class="meta-item"><span>CORE_ENTITIES:</span> ${(Array.isArray(post.coreEntities) ? post.coreEntities : []).map(esc).join(', ')}</div>
+                    <div class="meta-item"><span>SEO_KEYWORDS:</span> ${(post.seoKeywords || []).map(esc).join(', ')}</div>
+                    ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).map(esc).join(', ')}</div>` : ''}
+                    <div class="meta-item"><span>CORE_MESSAGE:</span> ${esc(post.coreMessage)}</div>
+                </div>
+                <button class="write-btn" onclick='generateFullPost(${JSON.stringify(post).replace(/'/g, "&apos;")})'>
+                    WRITE_SEO_OPTIMIZED_POST
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+
+    aiContent.innerHTML = `
         <div class="analysis-grid">
             <div class="post-section">
-                <h3>VIRAL_HIJACKING_STRATEGIES (TOP_${data.blogPosts.length})</h3>
+                <h3>VIRAL_HIJACKING_STRATEGIES (TOP_${sortedPosts.length})</h3>
+                ${statsBar}
                 <div class="post-list">
-                    ${data.blogPosts.map((post, i) => {
-                        const title = post.viralTitles ? (post.viralTitles.benefit || post.viralTitles.curiosity || post.mainKeyword) : post.viralTitle;
-                        return `
-                        <div class="post-card marketing-card">
-                            <div class="post-index">0${i+1}</div>
-                            <div class="post-main">
-                                <div class="post-title" style="color:var(--text-color)">${title}</div>
-                                <div class="post-reason"><span class="highlight-tag">CATEGORY:</span> ${post.category}</div>
-                                <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${post.searchIntent}</div>
-                                <div class="post-reason"><span class="highlight-tag">TARGET_AUDIENCE:</span> ${post.trafficStrategy?.targetAudience || 'N/A'}</div>
-                                <div class="post-meta">
-                                    <div class="meta-item"><span>MAIN_TREND:</span> <strong style="color:var(--namu-color)">${post.mainKeyword}</strong></div>
-                                    <div class="meta-item"><span>ANGLE:</span> ${post.angleType || 'guide'}</div>
-                                    <div class="meta-item"><span>LIFECYCLE:</span> ${post.trafficStrategy?.lifecycle || 'N/A'}</div>
-                                    <div class="meta-item"><span>DEPTH:</span> ${post.contentDepth || 'N/A'}</div>
-                                    <div class="meta-item"><span>SHOPPABLE_ITEM:</span> ${post.shoppableKeyword || 'None'}</div>
-                                    <div class="meta-item"><span>CORE_FACT:</span> ${post.coreFact}</div>
-                                    <div class="meta-item"><span>CORE_ENTITIES:</span> ${(Array.isArray(post.coreEntities) ? post.coreEntities : []).join(', ')}</div>
-                                    <div class="meta-item"><span>SEO_KEYWORDS:</span> ${(post.seoKeywords || []).join(', ')}</div>
-                                    ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).join(', ')}</div>` : ''}
-                                    <div class="meta-item"><span>CORE_MESSAGE:</span> ${post.coreMessage}</div>
-                                </div>
-                                <button class="write-btn" onclick='generateFullPost(${JSON.stringify(post).replace(/'/g, "&apos;")})'>
-                                    WRITE_SEO_OPTIMIZED_POST
-                                </button>
-                            </div>
-                        </div>
-                        `
-                    }).join('')}
+                    ${cardsHtml}
                 </div>
             </div>
         </div>
     `;
-    
-    aiContent.innerHTML = html;
+}
+
+// [v2.7] REVIEW 카드 show/hide 토글 (자동 탈락 없이 사용자 편의)
+function togglePriorityFilter() {
+    const checkbox = document.getElementById('hide-review-toggle');
+    const hideReview = checkbox && checkbox.checked;
+    document.querySelectorAll('.post-card[data-priority]').forEach(card => {
+        const p = card.getAttribute('data-priority');
+        if (hideReview && (p === 'review' || p === 'unknown')) {
+            card.style.display = 'none';
+        } else {
+            card.style.display = '';
+        }
+    });
 }
 
 async function generateFullPost(postPlan) {

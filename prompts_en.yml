@@ -18,6 +18,7 @@ _shared:
   post_writing_common_rules: &pw_common_rules
     # ── [Structure / Tone / Format] ────────────────────────────────────────
     - "**Intro Hook & BLUF (mandatory):** Never start with an H2 (##). The first paragraph must be plain body text that bridges the auto-rendered title and the first H2 — do NOT write any `#` H1 line yourself (see [System Structure Note] in the template). The very first sentence MUST be one of these three: (a) a **fact-driven hook** dropping a specific number, named entity, or date from {{coreFact}} upfront, (b) a **single line that sounds like the reader's own inner thought** (not a generic empathy question), or (c) a **counter-intuitive fact** that flips common assumption. **[BLACKLIST]** AI-cliche openers like 'In today's fast-paced world', 'Ever feel like...', 'We've all been there', 'Let me tell you...', 'Picture this:', 'Have you ever wondered...', 'Let's dive in', 'In this article' are strictly forbidden. Right after the hook, deliver a crisp 2–3 sentence BLUF that contains {{coreFact}} so AI search engines can lift it cleanly."
+    - "**Preemptive Information-Gap Strike (SERP Differentiation — emerging-blog dwell-time strategy):** If the planning-stage value `{{serpDifferentiation}}` is non-empty, right after the BLUF (or at the very start of the first H2 body) **skip the obvious explanations that all currently top-ranking articles already cover, and lead with this specific information gap instead.** The goal is that the reader, within the first scroll, clearly feels 'this article is genuinely different from the others I've seen.' (If `{{serpDifferentiation}}` is empty or arrives as the unsubstituted literal, silently ignore this rule and write in the normal flow.)"
     - "**Safe Tone & Manner (No roleplay leakage):** NEVER refer to the writer with first-person role labels like 'As your friend', 'I am here to tell you', or 'let me/your friend tell you'. Keep the persona implicit through tone only. Avoid AI clichés, aggressive 'you', forced memes, excessive exclamation marks, and decorative emojis."
     - "**[Emoji Ban & Textual Emotion Optimization]:** Strictly avoid colorful Unicode emojis (faces, icons, etc.). To express emotions, use 'analog text emoticons' or '(bracketed descriptions of actions)' that fit the persona. Do not use specific examples; create new combinations for each context to eliminate AI markers. Use 0–2 times per post, and ONLY when the emotion naturally surfaces — if the tone is serious or factual, zero is the right call. Do not force it for flavor."
     - "**Source Concealment vs Information Exposure (Split Protocol):** Handle the two categories strictly separately.\n        [Conceal — always abstract]: Specific community names (reddit, buzzfeed, instiz, arca, etc.), gossip-tier media outlets, and throwaway reference dates from the raw input data. NEVER let these surface in the body, tags, or reference list. Replace them with natural phrases like 'a recent online community discussion' or 'a thread that went viral lately'. Mechanically copying brackets ([ ]) or placeholder text into the body is a fatal error.\n        [Expose — MUST be stated plainly]: (1) Official government / public agency names (FTC, SEC, IRS, CDC, FDA, etc.), (2) benefit / subsidy / refund **application deadlines, effective dates, expiry dates**, (3) specific figures like discount percentages, subsidy amounts, or eligibility thresholds, (4) facts verified through external search from authoritative sources. These must be stated precisely in the body for credibility, and listed as proper markdown links in the [References] block when a confirmed URL exists.\n        (CRITICAL: Do not leave text traces like '[Google Search]' anywhere in the response.)"
@@ -73,6 +74,32 @@ tasks:
       3. Data/Fact-Driven (coreFact): The fact backing your angle MUST **explicitly include at least ONE of: a number, a proper noun, an institution/outlet name, or a date**. Vague adjectives alone ("many", "significant", "recently") are NOT acceptable. NEVER invent statistics, prices, or counts. If the source has no numbers (e.g., reddit titles only), use the source name, post score, comment count, publish time, rank, or cited outlet as the fact.
       4. Search Function Integration (Fact Scouting): If the input data is vague or lacks specific numbers/dates, actively use the internal search function to verify the latest facts. **At this time, do not just look at the superficial keywords of the incident; grasp the actual public sentiment regarding the issue (whether it's a playful reaction or real anger) and reflect it in the plan.** Incorporate found background details into the coreFact. (CRITICAL: Never output system texts or symbols like '[Google Search]' anywhere in the final output.)
 
+      [🔥 Emerging-Blog SEO Boost Rules — MANDATORY]
+      ■ Pain Score (painScore, integer 3-15)
+        - severity (1-5): how badly does this problem wreck the reader's life if it blows up?
+        - urgency (1-5): must they solve it right now, or can it wait?
+        - impact (1-5): monetary/time/safety/relationship damage magnitude
+        - Output a **single integer** = severity + urgency + impact (range 3-15).
+        - **Interpretation (guideline):** ≥9 = high-priority main plan / 6-8 = consideration-stage support plan allowed / ≤5 = weak search demand, sharpen the plan and regenerate before emitting.
+
+      ■ SERP Differentiation (serpDifferentiation)
+        - In 1-2 concrete lines, articulate the **specific information gap that current top-ranking articles for this keyword all share**.
+        - Example: "Most articles explain how to cancel the subscription, but none flag the residual auto-billing risk and expiring reward-point window after cancellation."
+        - Vague differentiation like "we explain in more detail" is forbidden. Must point to a **specific missing topic or scenario**.
+
+      ■ Search Behavior Queries (searchBehaviorQueries)
+        - Produce **2-3 colloquial sentences** the reader would actually type into a search bar. Each ≤15 words.
+        - Self-check: "Would this sentence realistically appear on Reddit, Quora, or Stack Exchange?" If not, discard and retry.
+        - Bad: "A comprehensive optimization guide for iPhone overheating" (no one types like this)
+        - Good: "why is my iPhone so hot lately", "iphone getting hot afraid battery will explode"
+
+      ■ Query Confidence (queryConfidence, enum)
+        - Self-rate the actual monthly search demand for the queries above.
+          · "High" — you are confident real people search this every month (you've seen similar questions repeatedly in communities)
+          · "Medium" — plausible but unsure
+          · "Low" — feels fabricated, nobody would search it → **in this case, discard the plan entirely and regenerate from scratch**
+        - Do not stamp High without evidence. An honest Medium beats a Low dressed up as High every time.
+
       [viralTitles Rules — Psychological Trigger-Based Click Hook Design]
       For each of the three skeletons (curiosity / dataDriven / solution) you MUST equip a **different psychological trigger**. Discard the predictable "A+B=C" approach; channel raw top-voted community vocabulary and layered wit to produce 'click-magnet' titles. (~60 chars)
 
@@ -93,11 +120,13 @@ tasks:
          - solution: [a sharp jab at the target audience's pain point] + [a refreshing hint of the solution]
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
-      Self-review the four items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
+      Self-review the six items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
       ✓ Do the 3 viralTitles each use a distinct psychological trigger?
       ✓ Does coreFact explicitly contain at least one number / proper noun / institution / date?
       ✓ Do viralTitles and metaDescription speak in the tone/vocabulary the targetAudience would actually use?
       ✓ Does at least one of the 3 titles directly address searchIntent's emotion / anxiety / need?
+      ✓ Is the painScore sum logically justified, and if below 6, did you resharpen the plan?
+      ✓ Does serpDifferentiation name a concrete missing topic rather than a vague "we cover it better"?
     template: |
       [Real-time Trend Data]
       {{trends_data}}
@@ -118,6 +147,10 @@ tasks:
             "conclusionType": "Q&A | Summary | CTA | Thought (enum value only)",
             "shoppableKeyword": "Product-name string OR the data type null (no quotes). Use null for policy/finance/abstract topics.",
             "coreFact": "A decisive, specific fact/number grounded in the input data",
+            "painScore": 11,
+            "serpDifferentiation": "The specific information gap that top-ranking articles all miss (1-2 concrete lines)",
+            "searchBehaviorQueries": ["colloquial query 1 (<=15 words)", "colloquial query 2"],
+            "queryConfidence": "High | Medium | Low (enum only / Low => discard this plan and regenerate)",
             "viralTitles": {
               "curiosity": "[Title built via formula, ~60 chars]",
               "dataDriven": "[Title built via formula, ~60 chars]",
@@ -151,6 +184,12 @@ tasks:
       3. Data/Fact-Driven (coreFact): The fact backing your angle MUST **explicitly include at least ONE of: a number, a proper noun, an institution/outlet name, or a date**. Vague adjectives alone ("many", "significant", "recently") are NOT acceptable. NEVER invent stats. If the text has no numbers, use named entities, sources, or time markers instead.
       4. Anti-Cannibalization (CRITICAL): If a '[Published in the last 30 days]' list is appended at the bottom of the prompt, review it first. NEVER generate a plan covering the same core keyword or identical topic already published. Find a completely new angle.
 
+      [🔥 Emerging-Blog SEO Boost Rules — MANDATORY]
+      ■ Pain Score (painScore, integer 3-15): severity(1-5) + urgency(1-5) + impact(1-5). ≥9 main / 6-8 support / ≤5 sharpen before emitting.
+      ■ SERP Differentiation (serpDifferentiation): The specific, concrete information gap top-ranking articles all miss (1-2 lines). No vague "we cover it better".
+      ■ Search Behavior Queries (searchBehaviorQueries): 2-3 colloquial sentences a reader would actually type (≤15 words each). Must pass the Reddit/Quora reality check.
+      ■ Query Confidence (queryConfidence, enum): Self-rate real monthly demand. High / Medium / Low. Low => discard the plan and regenerate from scratch.
+
       [viralTitles Rules — Psychological Trigger-Based Click Hook Design]
       For each of the three skeletons (curiosity / dataDriven / solution) you MUST equip a **different psychological trigger**. Discard the predictable "A+B=C" approach; channel raw top-voted community vocabulary and layered wit to produce 'click-magnet' titles. (~60 chars)
 
@@ -171,11 +210,13 @@ tasks:
          - solution: [a sharp jab at the target audience's pain point] + [a refreshing hint of the solution]
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
-      Self-review the four items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
+      Self-review the six items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
       ✓ Do the 3 viralTitles each use a distinct psychological trigger?
       ✓ Does coreFact explicitly contain at least one number / proper noun / institution / date?
       ✓ Do viralTitles and metaDescription speak in the tone/vocabulary the targetAudience would actually use?
       ✓ Does at least one of the 3 titles directly address searchIntent's emotion / anxiety / need?
+      ✓ Is the painScore sum logically justified, and if below 6, did you resharpen the plan?
+      ✓ Does serpDifferentiation name a concrete missing topic rather than a vague "we cover it better"?
     template: |
       [User Input Text]
       {{manual_text}}
@@ -196,6 +237,10 @@ tasks:
             "conclusionType": "Q&A | Summary | CTA | Thought (enum value only)",
             "shoppableKeyword": "Product-name string OR the data type null (no quotes). Use null for policy/finance/abstract topics.",
             "coreFact": "Specific fact/number from the text",
+            "painScore": 11,
+            "serpDifferentiation": "The specific information gap that top-ranking articles all miss (1-2 concrete lines)",
+            "searchBehaviorQueries": ["colloquial query 1 (<=15 words)", "colloquial query 2"],
+            "queryConfidence": "High | Medium | Low (enum only / Low => discard this plan and regenerate)",
             "viralTitles": {
               "curiosity": "[formula-based title]",
               "dataDriven": "[formula-based title]",
@@ -249,6 +294,7 @@ tasks:
       - SEO Keywords: {{seoKeywords}}
       - LSI Keywords: {{lsiKeywords}}
       - Message: {{coreMessage}}
+      - SERP Differentiation: {{serpDifferentiation}}
       - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
       - FAQ Data: {{faq}}
 
@@ -281,6 +327,7 @@ tasks:
       - SEO Keywords: {{seoKeywords}}
       - LSI Keywords: {{lsiKeywords}}
       - Message: {{coreMessage}}
+      - SERP Differentiation: {{serpDifferentiation}}
       - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
       - FAQ Data: {{faq}}
 
@@ -312,6 +359,7 @@ tasks:
       - SEO Keywords: {{seoKeywords}}
       - LSI Keywords: {{lsiKeywords}}
       - Message: {{coreMessage}}
+      - SERP Differentiation: {{serpDifferentiation}}
       - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
       - FAQ Data: {{faq}}
 

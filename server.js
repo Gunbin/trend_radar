@@ -94,7 +94,12 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     seoKeywords: { type: "array", items: { type: "string" } },
                     lsiKeywords: { type: "array", items: { type: "string" } },
                     imageSearchKeywords: { type: "array", items: { type: "string" } },
-                    coreMessage: { type: "string" }
+                    coreMessage: { type: "string" },
+                    // [v2.7] 신생 블로그 SEO 보강용 4종 (optional — 모델이 빼먹어도 본문 생성은 그대로 진행)
+                    painScore: { type: "integer", minimum: 3, maximum: 15 },
+                    serpDifferentiation: { type: "string" },
+                    searchBehaviorQueries: { type: "array", items: { type: "string" } },
+                    queryConfidence: { type: "string", enum: ["High", "Medium", "Low"] }
                 },
                 required: [
                     "trafficStrategy", "category", "mainKeyword", "angleType", "searchIntent",
@@ -107,6 +112,49 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     },
     required: ["blogPosts"]
 };
+
+// [v2.7] 기획안 품질 분류 — painScore + queryConfidence 조합으로 _meta.priority 태깅
+//        - 자동 탈락은 하지 않고 경고만 남겨, 사용자가 최종 선택권을 가진다.
+//        - 필드 누락(legacy 응답) 시에도 안전하게 기본값 처리.
+function annotateAnalysisPriority(analysisResult) {
+    if (!analysisResult || !Array.isArray(analysisResult.blogPosts)) return analysisResult;
+
+    for (const post of analysisResult.blogPosts) {
+        const painScore = Number.isInteger(post.painScore) ? post.painScore : null;
+        const confidence = typeof post.queryConfidence === 'string' ? post.queryConfidence : null;
+
+        let priority = 'review'; // 기본값(필드 누락 시)
+        let reason = '';
+
+        if (painScore === null && confidence === null) {
+            priority = 'review';
+            reason = 'painScore/queryConfidence 누락 — legacy 또는 모델이 빼먹음';
+        } else if (confidence === 'Low') {
+            priority = 'review';
+            reason = 'queryConfidence=Low — 검색 수요 확신 부족';
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — queryConfidence=Low, 재검토 권장`);
+        } else if ((painScore ?? 0) >= 9 && confidence === 'High') {
+            priority = 'primary';
+            reason = 'painScore≥9 + confidence=High — 메인 기획 적합';
+        } else if ((painScore ?? 0) >= 6 && confidence !== 'Low') {
+            priority = 'secondary';
+            reason = 'painScore 6~8 또는 confidence≠Low — 보조 기획 허용';
+        } else if ((painScore ?? 0) < 6) {
+            priority = 'review';
+            reason = `painScore=${painScore} — 페인 약함, 재검토 권장`;
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — painScore=${painScore}, 검색 수요 약함`);
+        }
+
+        post._meta = {
+            priority,
+            reason,
+            painScore,
+            queryConfidence: confidence
+        };
+    }
+
+    return analysisResult;
+}
 
 const execPromise = util.promisify(exec);
 
@@ -1378,7 +1426,9 @@ app.post('/api/analyze', async (req, res) => {
 
         logger.success(`[Analysis] [${api.name}] Successful with ${modelName}${useSchema ? ' (schema)' : ''}`);
         success = true;
-        return res.json(JSON.parse(text));
+        // [v2.7] 기획안 우선순위 태깅 (painScore + queryConfidence 기반)
+        const analysisJson = annotateAnalysisPriority(JSON.parse(text));
+        return res.json(analysisJson);
       } catch (error) {
         lastError = error;
         logger.warn(`[Analysis] [${api.name}] Failed with ${modelName}: ${error.message}. Retrying immediately with next model...`);
@@ -1465,6 +1515,9 @@ app.post('/api/generate-post', async (req, res) => {
           seoKeywords: tags.join(', '),
           lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
           coreMessage: postPlan.coreMessage,
+          // [v2.7] 기획 단계에서 뽑은 "정보 격차" — 도입부에서 뻔한 설명 생략하고 먼저 때리는 용도
+          //        비어 있어도 안전 (프롬프트 규칙 자체가 '값 없으면 무시'하도록 작성됨)
+          serpDifferentiation: postPlan.serpDifferentiation || '',
           // 기획 단계 누락 정보 전달 (오류 수정)
           lifecycle: postPlan.trafficStrategy?.lifecycle || '',
           category: postPlan.category || '',

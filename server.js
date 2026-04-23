@@ -39,6 +39,75 @@ const MODELS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6시간
 const ALLOWED_ANGLES = new Set(['expose', 'guide', 'compare']);
 const DEFAULT_ANGLE = 'guide';
 
+// === [v2.6] trend_analysis / manual_analysis 공통 응답 스키마 ===
+// - 프롬프트의 format_rules(enum/ JSON 포맷 잔소리) 를 프롬프트에서 걷어내고 여기서 enforce
+// - Google Search Grounding(useSearch=true)과는 동시 사용 제약이 있으므로 useSearch=false 경로에서만 적용
+const ANALYSIS_RESPONSE_SCHEMA = {
+    type: "object",
+    properties: {
+        blogPosts: {
+            type: "array",
+            items: {
+                type: "object",
+                properties: {
+                    trafficStrategy: {
+                        type: "object",
+                        properties: {
+                            lifecycle: { type: "string", enum: ["Burst", "Evergreen"] },
+                            targetAudience: { type: "string" }
+                        },
+                        required: ["lifecycle", "targetAudience"]
+                    },
+                    category: { type: "string", enum: ["Tech and IT", "Finance", "Life and Health", "Entertainment"] },
+                    mainKeyword: { type: "string" },
+                    angleType: { type: "string", enum: ["expose", "guide", "compare"] },
+                    searchIntent: { type: "string" },
+                    // KR: "Snack", EN: "Bite-sized" — 두 값 모두 허용 (downstream 은 단순 문자열로만 사용)
+                    contentDepth: { type: "string", enum: ["Snack", "Bite-sized", "Normal", "Deep-Dive"] },
+                    conclusionType: { type: "string", enum: ["Q&A", "Summary", "CTA", "Thought"] },
+                    shoppableKeyword: { type: "string", nullable: true },
+                    coreFact: { type: "string" },
+                    viralTitles: {
+                        type: "object",
+                        properties: {
+                            curiosity: { type: "string" },
+                            dataDriven: { type: "string" },
+                            solution: { type: "string" }
+                        },
+                        required: ["curiosity", "dataDriven", "solution"]
+                    },
+                    metaDescription: { type: "string" },
+                    slug: { type: "string" },
+                    faq: {
+                        type: "array",
+                        items: {
+                            type: "object",
+                            properties: {
+                                q: { type: "string" },
+                                a: { type: "string" }
+                            },
+                            required: ["q", "a"]
+                        }
+                    },
+                    subTopics: { type: "array", items: { type: "string" } },
+                    coreEntities: { type: "array", items: { type: "string" } },
+                    seoKeywords: { type: "array", items: { type: "string" } },
+                    lsiKeywords: { type: "array", items: { type: "string" } },
+                    imageSearchKeywords: { type: "array", items: { type: "string" } },
+                    coreMessage: { type: "string" }
+                },
+                required: [
+                    "trafficStrategy", "category", "mainKeyword", "angleType", "searchIntent",
+                    "contentDepth", "conclusionType", "coreFact", "viralTitles", "metaDescription",
+                    "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "lsiKeywords",
+                    "imageSearchKeywords", "coreMessage"
+                ]
+            }
+        }
+    },
+    required: ["blogPosts"]
+};
+
 const execPromise = util.promisify(exec);
 
 const app = express();
@@ -277,6 +346,116 @@ async function getOpenverseImage(keyword) {
     logger.error('Openverse API Error', error.message);
   }
   return null;
+}
+
+// === [v2.6] References URL 검증 & 도메인 루트 자동 축약 ===
+// - Gemini 가 상상으로 생성한 deep-link (예: article id 가 있는 긴 URL) 가 404 를 내는 것을 방지.
+// - <small>...<i>[참고자료]|[References] ...</i></small> 블록 안의 마크다운 링크만 대상으로 한다 (본문 링크는 건드리지 않음).
+// - 동작 규칙:
+//     1) URL 에 HEAD 요청 → 2xx/3xx 면 그대로 유지
+//     2) 실패하면 도메인 루트(`new URL(url).origin`) 로 축약 후 재검증
+//     3) 도메인 루트도 실패하면 마크다운 링크를 제거하고 표시명 텍스트만 남김
+//     4) 한 참조에 들어가는 시간은 최대 ~ (HEAD timeout + root timeout) 이며, 모든 참조 검증은 Promise.all 병렬
+async function verifyUrl(url, timeoutMs = 5000) {
+    try {
+        // HEAD 시도 (가장 빠름, 일부 서버는 405 반환)
+        const res = await axios.head(url, {
+            timeout: timeoutMs,
+            maxRedirects: 5,
+            validateStatus: s => s >= 200 && s < 400,
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TrendRadar/2.6; +https://github.com/)' }
+        });
+        return res.status >= 200 && res.status < 400;
+    } catch (headErr) {
+        // HEAD 차단/405 인 경우 GET 으로 한 번 더 시도 (응답 본문은 안 받음)
+        try {
+            const res = await axios.get(url, {
+                timeout: timeoutMs,
+                maxRedirects: 5,
+                validateStatus: s => s >= 200 && s < 400,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; TrendRadar/2.6; +https://github.com/)',
+                    'Range': 'bytes=0-0' // 첫 1바이트만 요청
+                }
+            });
+            return res.status >= 200 && res.status < 400;
+        } catch {
+            return false;
+        }
+    }
+}
+
+async function verifyAndFixReferences(markdown) {
+    if (!markdown || typeof markdown !== 'string') return markdown;
+
+    // 1) [References] / [참고자료] 섹션 추출 (<small>...<i>...</i></small> 형태)
+    //    - 모델이 <br> 위치를 살짝 다르게 쓸 수 있으므로 유연하게 매칭
+    const refBlockRegex = /<small>[\s\S]*?<i>[\s\S]*?\[(?:References|참고자료)\][\s\S]*?<\/i>[\s\S]*?<\/small>/i;
+    const match = markdown.match(refBlockRegex);
+    if (!match) return markdown; // 참고자료 섹션 없음 → 원본 그대로
+
+    const originalBlock = match[0];
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+
+    const linkMatches = [...originalBlock.matchAll(linkRegex)];
+    if (linkMatches.length === 0) return markdown;
+
+    // 2) 각 URL 병렬 검증 후 치환 계획 수립
+    const resolutions = await Promise.all(linkMatches.map(async (m) => {
+        const [whole, label, url] = m;
+        try {
+            const okOriginal = await verifyUrl(url);
+            if (okOriginal) {
+                return { whole, replacement: whole, status: 'kept' };
+            }
+
+            // 도메인 루트로 축약 후 재검증
+            let rootUrl;
+            try {
+                rootUrl = new URL(url).origin;
+            } catch {
+                rootUrl = null;
+            }
+
+            if (rootUrl && rootUrl !== url) {
+                const okRoot = await verifyUrl(rootUrl);
+                if (okRoot) {
+                    return { whole, replacement: `[${label}](${rootUrl})`, status: 'shrunk-to-root', from: url, to: rootUrl };
+                }
+            }
+
+            // 도메인 루트도 실패 → 마크다운 링크 제거, 라벨만 남김
+            return { whole, replacement: label, status: 'link-stripped', from: url };
+        } catch (err) {
+            // 예기치 못한 오류는 원본 유지
+            return { whole, replacement: whole, status: 'error', error: err.message };
+        }
+    }));
+
+    // 3) 블록 내에서만 치환 (본문 링크는 절대 건드리지 않도록 블록 단위 replace)
+    let fixedBlock = originalBlock;
+    for (const r of resolutions) {
+        // whole 이 동일 블록 안에 유일하도록 마크다운 특성상 거의 문제 없음.
+        // 그래도 안전을 위해 첫 1회만 치환.
+        fixedBlock = fixedBlock.replace(r.whole, r.replacement);
+    }
+
+    // 4) 로그 남기기 (변경된 것만)
+    const changed = resolutions.filter(r => r.status !== 'kept' && r.status !== 'error');
+    if (changed.length > 0) {
+        for (const r of changed) {
+            if (r.status === 'shrunk-to-root') {
+                logger.warn(`[References] Dead deep-link → 도메인 루트 축약: ${r.from} → ${r.to}`);
+            } else if (r.status === 'link-stripped') {
+                logger.warn(`[References] URL 검증 실패 (루트도 실패) → 링크 제거: ${r.from}`);
+            }
+        }
+    } else {
+        logger.process(`[References] 모든 URL 검증 통과 (${resolutions.length}건)`);
+    }
+
+    // 5) 전체 마크다운에서 블록 교체
+    return markdown.replace(originalBlock, fixedBlock);
 }
 
 // --- Cloudinary Upload Helper ---
@@ -1105,11 +1284,15 @@ app.get('/api/trends', async (req, res) => {
             ppomppu: "뽐뿌 정보/강좌 게시판. 재테크, 핫딜, 가성비에 매우 민감한 스마트 컨슈머들이 공유하는 생활 밀착형 꿀팁 및 유용한 정보.",
             instiz: "인스티즈 핫(HOT) 게시판. 10~20대 여성 중심 커뮤니티의 실시간 바이럴 이슈, 유머, 연예인, 가벼운 일상 해프닝."
         }
-    });  }
-    });app.post('/api/analyze', async (req, res) => {
-  const { trends, manualText, config, region = 'KR' } = req.body; 
+    });
+    }
+});
+
+app.post('/api/analyze', async (req, res) => {
+  const { trends, manualText, config, region = 'KR' } = req.body;
   const topicCount = config?.topicCount || 3;
-  const useSearch = config?.useSearch !== false; // 기본값 true
+  // [v2.6] 기본값 false — useSearch=true 는 Grounding + responseSchema 동시 사용 제약이 있고, 실사용에서 모델 차단(429/503) 빈도도 높아 opt-in 방식으로 전환
+  const useSearch = config?.useSearch === true;
   const lang = region === 'US' ? 'en' : 'ko';
 
   const modelsToTry = await getBestModels();
@@ -1146,16 +1329,26 @@ app.get('/api/trends', async (req, res) => {
         const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
         const tools = (useSearch && supportsTools) ? [{ googleSearchRetrieval: {} }] : undefined;
 
+        // [v2.6] responseSchema 는 useSearch=false 인 경로에서만 적용 (Grounding 동시 사용 제약 회피).
+        //        schema 적용 시 모델이 정확한 JSON 을 반환하므로 마크다운 ```json 제거/중괄호 복구 후처리를 생략할 수 있다.
+        const useSchema = !tools;
+        const generationConfig = {
+            temperature: 0.7,
+            topP: 0.9
+        };
+        if (useSchema) {
+            generationConfig.responseMimeType = "application/json";
+            generationConfig.responseSchema = ANALYSIS_RESPONSE_SCHEMA;
+        }
+
         const model = currentGenAI.getGenerativeModel({
             model: modelName,
             tools: tools,
-            generationConfig: {
-                temperature: 0.7,
-                topP: 0.9
-            }
+            generationConfig
         });
 
-        let prompt;        if (manualText) {
+        let prompt;
+        if (manualText) {
             prompt = promptManager.getPrompt('manual_analysis', lang, {
               manual_text: manualText,
               topic_count: topicCount
@@ -1172,15 +1365,18 @@ app.get('/api/trends', async (req, res) => {
         const result = await model.generateContent(prompt);
         const response = await result.response;
         let text = response.text().trim();
-        text = text.replace(/^```(json)?|```$/gi, "").trim();
-        
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1) {
-          text = text.slice(firstBrace, lastBrace + 1);
+
+        // schema 미적용 경로(useSearch=true 등)에서만 마크다운 코드펜스/문자열 쓰레기 방어 로직 유지
+        if (!useSchema) {
+            text = text.replace(/^```(json)?|```$/gi, "").trim();
+            const firstBrace = text.indexOf('{');
+            const lastBrace = text.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1) {
+                text = text.slice(firstBrace, lastBrace + 1);
+            }
         }
-        
-        logger.success(`[Analysis] [${api.name}] Successful with ${modelName}`);
+
+        logger.success(`[Analysis] [${api.name}] Successful with ${modelName}${useSchema ? ' (schema)' : ''}`);
         success = true;
         return res.json(JSON.parse(text));
       } catch (error) {
@@ -1197,7 +1393,8 @@ app.get('/api/trends', async (req, res) => {
 });
 
 app.post('/api/generate-post', async (req, res) => {
-  const { postPlan, region = 'KR', useSearch = true } = req.body;
+  // [v2.6] useSearch 기본값 false (opt-in). 클라이언트에서 명시적으로 true 를 넘길 때만 Grounding 활성화.
+  const { postPlan, region = 'KR', useSearch = false } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
 
   // [v2.4] 태그 자동 확장: mainKeyword + seoKeywords + lsi + coreEntities → 4~8개
@@ -1308,6 +1505,15 @@ app.post('/api/generate-post', async (req, res) => {
   if (!bodyMarkdown) {
       logger.error(`[Post Gen] All models across all APIs failed`, lastError?.message);
       return res.status(500).json({ error: '본문 생성 실패' });
+  }
+
+  // [v2.6] References URL 검증 & 도메인 루트 자동 축약
+  //        - Gemini hallucination deep-link 로 인한 404 를 이미지 치환 전에 먼저 정리.
+  //        - 실패해도 전체 포스팅을 막지 않도록 try/catch 로 감싸 안전 폴백.
+  try {
+      bodyMarkdown = await verifyAndFixReferences(bodyMarkdown);
+  } catch (e) {
+      logger.error('[References] verifyAndFixReferences 실패 (원본 유지)', e.message);
   }
 
   const usedImageUrls = new Set(); // 포스팅 단위 중복 이미지 방지용 Set

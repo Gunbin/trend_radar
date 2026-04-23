@@ -9,7 +9,8 @@ let APP_CONFIG = {
         KR: { google: true, nate: true, signal: true, fss: true, policy: true, ppomppu: true, instiz: true },
         US: { google: true, reddit: true, redditScams: true, redditPoverty: true, redditFrugal: true, yahoo: true, buzzfeed: true }
     },
-    useSearch: true,
+    // [v2.6] 실시간 검색(Grounding)은 기본 OFF. 설정 모달에서 on 시 수동 활성화.
+    useSearch: false,
     topicCount: 3,
     region: 'KR'
 };

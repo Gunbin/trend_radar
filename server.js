@@ -35,6 +35,10 @@ const PUBLISHED_INDEX_FILE = path.join(process.cwd(), 'published-index.json');
 const PUBLISHED_INDEX_TTL_DAYS = 30;
 const MODELS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6시간
 
+// angleType 허용 값 (post_writing_* 템플릿 키 조회에 직접 사용되므로 화이트리스트 필수)
+const ALLOWED_ANGLES = new Set(['expose', 'guide', 'compare']);
+const DEFAULT_ANGLE = 'guide';
+
 const execPromise = util.promisify(exec);
 
 const app = express();
@@ -1244,7 +1248,13 @@ app.post('/api/generate-post', async (req, res) => {
             }
         });
         
-        const angle = postPlan.angleType || 'guide';
+        // [가드] AI가 'Expose', 'expose/guide', 'expose (폭로)' 등 enum 외 값을 돌려줄 경우
+        //        `post_writing_${angle}` task 조회 실패 → 본문 생성 전체 크래시 방지
+        const rawAngle = String(postPlan.angleType || DEFAULT_ANGLE).toLowerCase().trim();
+        const angle = ALLOWED_ANGLES.has(rawAngle) ? rawAngle : DEFAULT_ANGLE;
+        if (angle !== rawAngle) {
+          logger.warn(`[Post Gen] Invalid angleType "${postPlan.angleType}" → fallback to "${angle}"`);
+        }
         const promptKey = `post_writing_${angle}`;
 
         const prompt = promptManager.getPrompt(promptKey, lang, {

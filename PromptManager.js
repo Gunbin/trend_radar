@@ -39,7 +39,8 @@ class PromptManager {
         finalPrompt += `[Instruction]\n${task.instruction}\n\n`;
         
         if (task.rules) {
-            finalPrompt += `[Rules]\n${task.rules.map(r => `- ${r}`).join('\n')}\n\n`;
+            // YAML anchor(`*alias`)로 병합된 공통 규칙 배열이 중첩될 수 있으므로 flat()으로 평탄화
+            finalPrompt += `[Rules]\n${task.rules.flat().map(r => `- ${r}`).join('\n')}\n\n`;
         }
 
         if (task.format_rules) {

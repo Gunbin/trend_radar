@@ -658,6 +658,19 @@ function renderAIAnalysis(data) {
                 </div>`
             : '';
 
+        // [v2.7] infoGainAngle — 강조 박스
+        const infoGain = post.infoGainAngle && post.infoGainAngle.description
+            ? `<div class="info-gain-box" title="이 글의 핵심 차별화 앵글">
+                    <div class="info-gain-label">&gt;&gt; INFO_GAIN [${esc(post.infoGainAngle.type)}]</div>
+                    <div class="info-gain-body">${esc(post.infoGainAngle.description)}</div>
+                </div>`
+            : '';
+
+        // [v2.7] sourceUrls — 메타에 추가
+        const sourceUrlsHtml = Array.isArray(post.sourceUrls) && post.sourceUrls.length
+            ? `<div class="meta-item"><span>SOURCE_URLS:</span> ${post.sourceUrls.map(u => `<a href="${esc(u)}" target="_blank" style="color:var(--google-color)">[LINK]</a>`).join(' ')}</div>`
+            : '';
+
         // [v2.7] searchBehaviorQueries — 칩 태그
         const queries = Array.isArray(post.searchBehaviorQueries) ? post.searchBehaviorQueries.filter(Boolean) : [];
         const queriesHtml = queries.length
@@ -680,6 +693,7 @@ function renderAIAnalysis(data) {
                 </div>
                 <div class="post-title" style="color:var(--text-color)">${esc(title)}</div>
                 ${serpGap}
+                ${infoGain}
                 <div class="post-reason"><span class="highlight-tag">CATEGORY:</span> ${esc(post.category)}</div>
                 <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${esc(post.searchIntent)}</div>
                 <div class="post-reason"><span class="highlight-tag">TARGET_AUDIENCE:</span> ${esc(post.trafficStrategy?.targetAudience || 'N/A')}</div>
@@ -695,6 +709,7 @@ function renderAIAnalysis(data) {
                     <div class="meta-item"><span>SEO_KEYWORDS:</span> ${(post.seoKeywords || []).map(esc).join(', ')}</div>
                     ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).map(esc).join(', ')}</div>` : ''}
                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${esc(post.coreMessage)}</div>
+                    ${sourceUrlsHtml}
                 </div>
                 <button class="write-btn" onclick='generateFullPost(${JSON.stringify(post).replace(/'/g, "&apos;")})'>
                     WRITE_SEO_OPTIMIZED_POST

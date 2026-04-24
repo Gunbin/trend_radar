@@ -712,6 +712,30 @@ h1 {
     line-height: 1.55;
 }
 
+/* --- INFO_GAIN 강조 박스 --- */
+.info-gain-box {
+    margin: 10px 0 16px;
+    padding: 12px 14px;
+    background: linear-gradient(90deg, rgba(255, 51, 102, 0.1) 0%, rgba(255, 51, 102, 0.02) 100%);
+    border-left: 3px solid var(--signal-color);
+    border-right: 1px solid rgba(255, 51, 102, 0.15);
+}
+
+.info-gain-box .info-gain-label {
+    color: var(--signal-color);
+    font-size: 0.7rem;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+    text-shadow: 0 0 5px rgba(255, 51, 102, 0.4);
+}
+
+.info-gain-box .info-gain-body {
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
 /* --- Search Behavior Queries 칩 라인 --------------------------------- */
 .search-queries-row {
     margin: 8px 0 14px;

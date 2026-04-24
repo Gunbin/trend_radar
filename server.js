@@ -99,13 +99,22 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     painScore: { type: "integer", minimum: 3, maximum: 15 },
                     serpDifferentiation: { type: "string" },
                     searchBehaviorQueries: { type: "array", items: { type: "string" } },
-                    queryConfidence: { type: "string", enum: ["High", "Medium", "Low"] }
+                    queryConfidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                    infoGainAngle: {
+                        type: "object",
+                        properties: {
+                            type: { type: "string", enum: ["hidden_risk", "counter_intuitive", "historical_comparison"] },
+                            description: { type: "string" }
+                        },
+                        required: ["type", "description"]
+                    },
+                    sourceUrls: { type: "array", items: { type: "string" } }
                 },
                 required: [
                     "trafficStrategy", "category", "mainKeyword", "angleType", "searchIntent",
                     "contentDepth", "conclusionType", "coreFact", "viralTitles", "metaDescription",
                     "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "lsiKeywords",
-                    "imageSearchKeywords", "coreMessage"
+                    "imageSearchKeywords", "coreMessage", "painScore", "serpDifferentiation", "searchBehaviorQueries", "queryConfidence", "infoGainAngle"
                 ]
             }
         }
@@ -1595,6 +1604,9 @@ app.post('/api/generate-post', async (req, res) => {
   const bodyImageRegex = /!\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g;
   const bodyMatches = [...bodyMarkdown.matchAll(bodyImageRegex)];
   
+  const engKeywords = Array.isArray(postPlan.imageSearchKeywords) ? postPlan.imageSearchKeywords : [];
+  let placeholderIndex = 0;
+
   for (const match of bodyMatches) {
       const fullMatch = match[0];
       const altText = match[1];
@@ -1603,16 +1615,18 @@ app.post('/api/generate-post', async (req, res) => {
 
       // 오타 방지: IMAGE_PLACEHOLDER가 아닌 IMAGE_PLACEER 등 다양한 오타 대응
       if (placeholderUrl.includes('IMAGE_PLACE')) {
-          const searchKeyword = englishKeyword || altText;
-          const skipTranslation = !!englishKeyword || region === 'US';
+          const searchKeyword = englishKeyword || engKeywords[placeholderIndex] || altText;
+          const skipTranslation = !!englishKeyword || !!engKeywords[placeholderIndex] || region === 'US';
           const realImageUrl = await getRandomImage(searchKeyword, false, skipTranslation, usedImageUrls);
           
           if (realImageUrl) {
               // [S2] 영문 title 속성 보존 → 이미지 SEO 신호 유지
-              const titlePart = englishKeyword ? ` "${englishKeyword.replace(/"/g, '\\"')}"` : '';
+              const titleToUse = englishKeyword || engKeywords[placeholderIndex] || searchKeyword;
+              const titlePart = titleToUse ? ` "${String(titleToUse).replace(/"/g, '\\"')}"` : '';
               const replacement = `![${altText}](${realImageUrl}${titlePart})`;
               bodyMarkdown = bodyMarkdown.replace(fullMatch, replacement);
           }
+          placeholderIndex++;
       }
   }
 

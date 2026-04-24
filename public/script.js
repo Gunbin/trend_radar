@@ -750,10 +750,9 @@ async function generateFullPost(postPlan) {
     const content = document.getElementById('post-content');
     
     modal.classList.remove('hidden');
-    content.textContent = "GENERATING COMPLETE BLOG POST USING GEMINI...\nPLEASE WAIT FOR NEURAL PROCESSING...";
-    
-    try {
-        const res = await fetch('/api/generate-post', {
+    content.textContent = "FETCHING REAL-TIME FACTS & GENERATING BLOG POST...\nPLEASE WAIT FOR NEURAL PROCESSING...";
+
+    try {        const res = await fetch('/api/generate-post', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 

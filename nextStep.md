@@ -548,7 +548,7 @@ function buildSearchQuery(postPlan) {
 }
 ```
 
-그래도 노이즈가 완전히 없어지진 않는다. 가져온 결과를 통째로 넘기는 대신, **Flash에게 필터링을 위임**한다.
+가져온 결과를 정제하여 본문 생성에 필요한 핵심 팩트로 전달한다.
 
 ---
 
@@ -714,7 +714,7 @@ async function enrichPostPlan(postPlan) {
             break;
     }
 
-    // 이하 Flash 필터링 로직 동일
+    // 이하 팩트 조합 로직 동일
     // ...
 }
 ```
@@ -781,13 +781,13 @@ async function searchWithFallback(postPlan) {
 11. [x] **source_urls 파이프라인** (개선 8-4): 크롤링 원본 URL → 프롬프트 직접 주입 (✅완료)
 12. [x] **ANALYSIS_RESPONSE_SCHEMA required 추가** (개선 1): painScore 등 4종 + infoGainAngle 필수화 (개선 9-2) (✅완료)
 13. [x] **이미지 번역 레이어 최적화** (개선 2) (✅완료)
-14. **Fact Enrichment Layer 구현** (개선 10): 네이버 뉴스 API 연동 + enrichPostPlan 함수 추가 (보류)
+14. [x] **Fact Enrichment Layer 구현** (개선 10): 네이버 뉴스 API 연동 + 단일 키워드 검색 Fallback 적용 및 직접 팩트 반환 (✅완료)
 
 ### Phase 3 — 중장기 (신규 소스 도입)
 
 15. **네이버 DataLab API 연동** (개선 5): 실제 검색량 데이터로 경쟁 강도 필터링
 16. **공공 기관 RSS 추가** (개선 5): nhis, kca, 고용노동부 보도자료
-17. **enrichPostPlan category별 소스 확장** (개선 10): FSS/정책브리핑 캐시 재활용, 공공데이터포털 연동
+17. [x] **enrichPostPlan category별 소스 확장** (개선 10): FSS/정책브리핑 캐시 재활용 (✅완료), 공공데이터포털 연동 (보류)
 
 ---
 

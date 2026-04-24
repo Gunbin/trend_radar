@@ -1451,10 +1451,170 @@ app.post('/api/analyze', async (req, res) => {
   res.status(500).json({ error: 'AI 분석 실패', details: lastError?.message });
 });
 
+async function searchNaverNews(query) {
+    if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
+        logger.warn('[Enrich] NAVER API 키 누락. 팩트 보강 검색 생략.');
+        return [];
+    }
+    try {
+        const res = await axios.get('https://openapi.naver.com/v1/search/news.json', {
+            params: { query, display: 5, sort: 'date' },
+            headers: {
+                'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+                'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
+            }
+        });
+        return res.data.items.map(item => ({
+            title: item.title.replace(/<[^>]+>/g, ''),
+            summary: item.description.replace(/<[^>]+>/g, ''),
+            url: item.originallink || item.link,
+            pubDate: item.pubDate
+        }));
+    } catch (e) {
+        logger.warn(`[Enrich] 네이버 뉴스 검색 실패: ${e.message}`);
+        return [];
+    }
+}
+
+async function searchNewsAPI(query) {
+    if (!process.env.NEWS_API_KEY) {
+        logger.warn('[Enrich] NEWS_API_KEY 누락. 영미권 팩트 보강 검색 생략.');
+        return [];
+    }
+    try {
+        logger.process(`[Enrich] NewsAPI 검색 요청: "${query}"`);
+        const res = await axios.get('https://newsapi.org/v2/everything', {
+            params: {
+                q: query,
+                language: 'en',
+                sortBy: 'publishedAt',
+                pageSize: 5,
+                apiKey: process.env.NEWS_API_KEY
+            }
+        });
+        if (res.data.status !== 'ok') {
+            logger.warn(`[Enrich] NewsAPI 반환 오류: ${res.data.message}`);
+            return [];
+        }
+        const articles = res.data.articles || [];
+        logger.success(`[Enrich] NewsAPI ${articles.length}건 검색 완료`);
+        return articles.map(item => ({
+            title: item.title || '',
+            summary: item.description || item.content || '',
+            url: item.url,
+            pubDate: item.publishedAt
+        })).filter(item => item.title && item.url);
+    } catch (e) {
+        logger.warn(`[Enrich] NewsAPI 검색 실패: ${e.message}`);
+        return [];
+    }
+}
+
+async function enrichPostPlan(postPlan, region = 'KR') {
+    try {
+        const entities = (postPlan.coreEntities || []).slice(0, 2).join(' ');
+        const query = `${postPlan.mainKeyword} ${entities}`.trim().slice(0, 50);
+        
+        let results = [];
+        
+        if (region === 'US') {
+            results = await searchNewsAPI(query);
+        } else {
+            results = await searchNaverNews(query);
+        }
+
+        // 너무 오래된 기사(1년 이상) 필터링
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
+
+        // 결과가 없으면 mainKeyword 단독으로 최후 검색 (fallback)
+        if (results.length === 0) {
+            logger.info(`[Enrich] 정밀 쿼리 결과 없음(또는 너무 오래됨). 단일 키워드 검색 시도: ${postPlan.mainKeyword}`);
+            if (region === 'US') {
+                results = await searchNewsAPI(postPlan.mainKeyword);
+            } else {
+                results = await searchNaverNews(postPlan.mainKeyword);
+            }
+            results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
+        }
+        
+        // [B] category별 추가 소스 연동 로직 (한국 한정)
+        const cat = (postPlan.category || '').toLowerCase();
+        if (region === 'KR') {
+            if (cat.includes('finance')) {
+                try {
+                    const fssData = await getFssAlerts();
+                    // 팩트 연관성 체크를 위해 키워드 포함 여부 확인 (느슨한 매칭)
+                    const matched = fssData.filter(item => 
+                        item.keyword.includes(postPlan.mainKeyword) || postPlan.mainKeyword.includes(item.keyword)
+                    );
+                    if (matched.length > 0) {
+                        logger.info(`[Enrich] FSS 소비자경보 관련 팩트 발견 — 추가됨`);
+                        // 배열 앞부분(우선순위)에 삽입
+                        results.unshift(...matched.map(r => ({
+                            title: `[금융감독원 소비자경보] ${r.keyword}`,
+                            summary: '금융감독원 공식 발표자료 (신뢰도 높음)',
+                            url: r.url,
+                            pubDate: r.pubDate
+                        })));
+                    }
+                } catch (e) {
+                    logger.warn(`[Enrich] FSS 연동 실패: ${e.message}`);
+                }
+            } else if (cat.includes('life') || cat.includes('health') || cat.includes('policy')) {
+                try {
+                    const policyData = await getPolicyBriefing();
+                    const matched = policyData.filter(item => 
+                        item.keyword.includes(postPlan.mainKeyword) || postPlan.mainKeyword.includes(item.keyword)
+                    );
+                    if (matched.length > 0) {
+                        logger.info(`[Enrich] 정책브리핑 관련 팩트 발견 — 추가됨`);
+                        results.unshift(...matched.map(r => ({
+                            title: `[정책브리핑] ${r.keyword}`,
+                            summary: '대한민국 정책브리핑 공식 보도자료 (신뢰도 높음)',
+                            url: r.url,
+                            pubDate: r.pubDate
+                        })));
+                    }
+                } catch (e) {
+                    logger.warn(`[Enrich] 정책브리핑 연동 실패: ${e.message}`);
+                }
+            }
+        }
+
+        if (results.length === 0) {
+            logger.warn(`[Enrich] 검색/카테고리 결과 없음 — keyword: ${postPlan.mainKeyword}`);
+            return postPlan; // 원본 기획안 그대로 반환
+        }
+
+        // 상위 3개 결과 요약 추출 (카테고리 소스 우선)
+        const facts = results.slice(0, 3).map(r => `[${new Date(r.pubDate).toLocaleDateString()}] ${r.title} - ${r.summary}`);
+        const urls = results.slice(0, 3).filter(r => r.url).map(r => `- [${r.title}](${r.url})`);
+
+        logger.success(`[Enrich] 팩트 보강 완료 (${facts.length}개 항목) — keyword: ${postPlan.mainKeyword}`);
+
+        return {
+            ...postPlan,
+            enrichedFacts: {
+                facts: facts,
+                sourceUrls: urls,
+                fetchedAt: new Date().toISOString()
+            }
+        };
+    } catch (err) {
+        logger.error(`[Enrich] 팩트 보강 실패: ${err.message}`);
+        return postPlan;
+    }
+}
+
 app.post('/api/generate-post', async (req, res) => {
   // [v2.6] useSearch 기본값 false (opt-in). 클라이언트에서 명시적으로 true 를 넘길 때만 Grounding 활성화.
-  const { postPlan, region = 'KR', useSearch = false } = req.body;
+  const { postPlan: rawPostPlan, region = 'KR', useSearch = false } = req.body;
   const lang = region === 'US' ? 'en' : 'ko';
+  
+  // Fact Enrichment Layer 적용
+  const postPlan = await enrichPostPlan(rawPostPlan, region);
 
   // [v2.4] 태그 자동 확장: mainKeyword + seoKeywords + lsi + coreEntities → 4~8개
   const tags = buildExpandedTags(postPlan);
@@ -1535,6 +1695,15 @@ app.post('/api/generate-post', async (req, res) => {
           metaDescription: postPlan.metaDescription || '',
           // v2.4: trafficStrategy.targetAudience를 본문 프롬프트의 어휘/예시 톤 가이드로 활용 (없으면 안전한 기본값)
           targetAudience: postPlan?.trafficStrategy?.targetAudience || postPlan?.targetAudience || '일반 독자',
+          searchBehaviorQueries: Array.isArray(postPlan.searchBehaviorQueries) ? postPlan.searchBehaviorQueries.join('\n') : '',
+          infoGainAngle: postPlan.infoGainAngle ? `[차별화 앵글: ${postPlan.infoGainAngle.type}]\n${postPlan.infoGainAngle.description}` : '',
+          source_urls: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.sourceUrls) && postPlan.enrichedFacts.sourceUrls.length > 0)
+              ? postPlan.enrichedFacts.sourceUrls.join('\n')
+              : (Array.isArray(postPlan.sourceUrls) ? postPlan.sourceUrls.join('\n') : ''),
+          enrichedFacts: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.facts) && postPlan.enrichedFacts.facts.length > 0)
+              ? postPlan.enrichedFacts.facts.map((f, i) => `${i + 1}. ${f}`).join('\n')
+              : '',
+          outputFormat: typeof FORMAT_TEMPLATES !== 'undefined' ? (FORMAT_TEMPLATES.find(t => t.key === selectFormatTemplate(angle, postPlan.contentDepth))?.label || '') : '',
           // 이미지 자리에 플레이스홀더 텍스트만 넣도록 유도하거나, 빈 URL 전달
           context_url_1: "IMAGE_PLACEHOLDER_1",
           context_url_2: "IMAGE_PLACEHOLDER_2",

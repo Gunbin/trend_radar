@@ -47,6 +47,20 @@ _shared:
 
 tasks:
   # ===================================================================== #
+  keyword_extraction:
+    persona: "A data analyst who precisely extracts core search terms from raw trend data."
+    instruction: |
+      Analyze the provided trend data and extract 8–10 noun-based search keywords (Search Terms) best suited for querying Naver to get search volume and document counts.
+      - Keywords must be in English.
+      - Keywords should be specific enough for keyword tools (e.g., instead of "Apple", use "Apple Watch Battery Replacement").
+      - Output ONLY a JSON array of strings. Do not use markdown code blocks.
+    template: |
+      [Input Trend Data]
+      {{trends_data}}
+
+      Extracted Keywords (JSON Array of Strings):
+
+  # ===================================================================== #
   #                       Planning Phase                                  #
   # ===================================================================== #
 
@@ -129,6 +143,8 @@ tasks:
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
       Self-review the six items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
+      ✓ Did you accurately reflect the provided [Real-time Naver Search Metrics]?
+      ✓ Did you prioritize blue-ocean keywords with a low competition index?
       ✓ Do the 3 viralTitles each use a distinct psychological trigger?
       ✓ Does coreFact explicitly contain at least one number / proper noun / institution / date?
       ✓ Do viralTitles and metaDescription speak in the tone/vocabulary the targetAudience would actually use?
@@ -147,8 +163,11 @@ tasks:
               "lifecycle": "Burst OR Evergreen (enum value only)",
               "targetAudience": "A one-line, concrete reader persona (e.g., a 30s office worker tired of overpaying for cell phone plans)"
             },
-            "category": "Tech and IT | Finance | Life and Health | Entertainment (enum value only)",
-            "mainKeyword": "Strategy-derived main keyword",
+            "mainKeyword": "Naver search keyword (recommended to use keywords from provided metrics)",
+            "searchVolume": 0,
+            "documentCount": 0,
+            "competitionIndex": 0.0,
+            "category": "Tech and IT | Finance | Life and Health | Entertainment (enum only)",
             "angleType": "expose | guide | compare (lowercase single word)",
             "searchIntent": "The searcher's true intention or hidden anxiety",
             "contentDepth": "Bite-sized | Normal | Deep-Dive (enum value only)",
@@ -249,8 +268,12 @@ tasks:
               "lifecycle": "Burst OR Evergreen (enum value only)",
               "targetAudience": "A one-line, concrete reader persona"
             },
-            "category": "Tech and IT | Finance | Life and Health | Entertainment (enum value only)",
-            "mainKeyword": "Key keyword",
+            "targetKeyword": "The Naver search term used as the basis for these metrics",
+            "mainKeyword": "Strategically refined main keyword for the post",
+            "searchVolume": 0,
+            "documentCount": 0,
+            "competitionIndex": 0.0,
+            "category": "Tech and IT | Finance | Life and Health | Entertainment (enum only)",
             "angleType": "expose | guide | compare (lowercase single word)",
             "searchIntent": "The searcher's true intention or hidden anxiety",
             "contentDepth": "Bite-sized | Normal | Deep-Dive (enum value only)",

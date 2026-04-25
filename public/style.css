@@ -712,6 +712,98 @@ h1 {
     line-height: 1.55;
 }
 
+/* --- PRIORITY_REASON_TEXT --- */
+.priority-reason-text {
+    font-size: 0.75rem;
+    color: var(--google-color);
+    margin-bottom: 8px;
+    font-weight: bold;
+    opacity: 0.9;
+}
+
+/* --- KEYWORD POOL SECTION (v3.1) --- */
+.pool-section {
+    background: rgba(0, 255, 65, 0.03);
+    border: 1px solid rgba(0, 255, 65, 0.15);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 30px;
+}
+
+.pool-title {
+    font-size: 0.85rem;
+    color: var(--text-color);
+    font-weight: bold;
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+}
+
+.pool-table-wrapper {
+    overflow-x: auto;
+}
+
+.pool-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.pool-table th {
+    text-align: left;
+    padding: 8px;
+    color: rgba(0, 255, 65, 0.6);
+    border-bottom: 1px solid rgba(0, 255, 65, 0.2);
+}
+
+.pool-table td {
+    padding: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.blue-ocean-text {
+    color: var(--google-color);
+    font-weight: bold;
+}
+
+/* --- METRICS_ROW (v3.0 Data-Driven) --- */
+.metrics-row {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+    padding: 8px 0;
+    border-top: 1px solid rgba(0, 255, 65, 0.1);
+    border-bottom: 1px solid rgba(0, 255, 65, 0.1);
+}
+
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.metric-item .m-label {
+    font-size: 0.65rem;
+    color: rgba(0, 255, 65, 0.5);
+    font-weight: bold;
+}
+
+.metric-item .m-value {
+    font-size: 0.9rem;
+    color: var(--text-color);
+    font-family: 'Courier New', monospace;
+}
+
+.metric-item.blue-ocean .m-value {
+    color: var(--google-color);
+    text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+}
+
+.metric-item.blue-ocean::after {
+    content: " 💎";
+    font-size: 0.7rem;
+}
+
 /* --- INFO_GAIN 강조 박스 --- */
 .info-gain-box {
     margin: 10px 0 16px;

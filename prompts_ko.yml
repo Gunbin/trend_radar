@@ -47,6 +47,20 @@ _shared:
 
 tasks:
   # ===================================================================== #
+  keyword_extraction:
+    persona: "트렌드 원문에서 핵심 검색어만 정교하게 추출하는 데이터 분석가"
+    instruction: |
+      입력된 트렌드 데이터를 분석하여, 네이버에서 실제 검색량과 문서 수를 조회하기에 가장 적합한 명사형 키워드 8~10개를 추출하세요.
+      - 키워드는 반드시 한국어로 추출하세요.
+      - 키워드는 검색 도구에 입력하기 적합하도록 구체적인 명사/복합명사 형태여야 합니다 (예: "아이폰"보다는 "아이폰 발열 해결").
+      - 출력은 반드시 JSON 문자열 배열 형식이어야 합니다. 마크다운 코드 블록을 사용하지 마세요.
+    template: |
+      [Input Trend Data]
+      {{trends_data}}
+
+      추출된 키워드 배열 (JSON Array of Strings):
+
+  # ===================================================================== #
   #                       기획 단계 (Planning Phase)                           #
   # ===================================================================== #
 
@@ -130,6 +144,8 @@ tasks:
 
       [최종 출력 전 자가 점검 체크리스트 (모든 blogPost 항목에 적용)]
       아래 6개 항목을 스스로 검토해 기준 미달이면 해당 필드를 수정한 뒤 출력하세요. **체크리스트 자체는 응답 JSON에 포함하지 마세요.**
+      ✓ 제공된 [실시간 네이버 검색 데이터]의 수치를 정확히 반영했는가?
+      ✓ 경쟁 지수가 낮은 블루오션 키워드를 우선 선정했는가?
       ✓ viralTitles 3개가 서로 다른 심리 트리거를 사용하는가?
       ✓ coreFact에 숫자·고유명사·기관명·날짜 중 최소 1개가 명시적으로 포함되는가?
       ✓ viralTitles·metaDescription의 어휘가 targetAudience가 실제로 구사할 톤과 일치하는가?
@@ -148,8 +164,12 @@ tasks:
               "lifecycle": "Burst 또는 Evergreen (enum 값만)",
               "targetAudience": "이 글을 클릭할 구체적인 타겟 페르소나 한 줄 (예: 매달 통신비가 아까운 30대 직장인)"
             },
+            "targetKeyword": "수치 데이터의 근거가 된 네이버 조회 키워드명",
+            "mainKeyword": "전략적으로 다듬은 포스팅 메인 키워드",
+            "searchVolume": 0,
+            "documentCount": 0,
+            "competitionIndex": 0.0,
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum 값만)",
-            "mainKeyword": "전략에 따라 도출된 메인 키워드",
             "angleType": "expose | guide | compare (영문 소문자 한 단어만)",
             "searchIntent": "이 키워드를 검색하는 사람의 진짜 속마음이나 불안감",
             "contentDepth": "Snack | Normal | Deep-Dive (enum 값만)",
@@ -250,10 +270,14 @@ tasks:
           {
             "trafficStrategy": {
               "lifecycle": "Burst 또는 Evergreen (enum 값만)",
-              "targetAudience": "이 글을 클릭할 구체적인 타겟 페르소나 한 줄"
+              "targetAudience": "이 글을 클릭할 구체적인 타겟 페르소나 한 줄 (예: 매달 통신비가 아까운 30대 직장인)"
             },
+            "targetKeyword": "수치 데이터의 근거가 된 네이버 조회 키워드명",
+            "mainKeyword": "전략적으로 다듬은 포스팅 메인 키워드",
+            "searchVolume": 0,
+            "documentCount": 0,
+            "competitionIndex": 0.0,
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum 값만)",
-            "mainKeyword": "핵심 키워드",
             "angleType": "expose | guide | compare (영문 소문자 한 단어만)",
             "searchIntent": "이 키워드를 검색하는 사람의 진짜 속마음이나 불안감",
             "contentDepth": "Snack | Normal | Deep-Dive (enum 값만)",

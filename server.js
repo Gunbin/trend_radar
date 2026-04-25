@@ -95,6 +95,9 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     lsiKeywords: { type: "array", items: { type: "string" } },
                     imageSearchKeywords: { type: "array", items: { type: "string" } },
                     coreMessage: { type: "string" },
+                    searchVolume: { type: "integer" },
+                    documentCount: { type: "integer" },
+                    competitionIndex: { type: "number" },
                     // [v2.7] 신생 블로그 SEO 보강용 4종 (optional — 모델이 빼먹어도 본문 생성은 그대로 진행)
                     painScore: { type: "integer", minimum: 3, maximum: 15 },
                     serpDifferentiation: { type: "string" },
@@ -111,10 +114,11 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     sourceUrls: { type: "array", items: { type: "string" } }
                 },
                 required: [
-                    "trafficStrategy", "category", "mainKeyword", "angleType", "searchIntent",
+                    "trafficStrategy", "category", "targetKeyword", "mainKeyword", "angleType", "searchIntent",
                     "contentDepth", "conclusionType", "coreFact", "viralTitles", "metaDescription",
                     "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "lsiKeywords",
-                    "imageSearchKeywords", "coreMessage", "painScore", "serpDifferentiation", "searchBehaviorQueries", "queryConfidence", "infoGainAngle"
+                    "imageSearchKeywords", "coreMessage", "painScore", "serpDifferentiation", 
+                    "searchBehaviorQueries", "queryConfidence", "infoGainAngle", "searchVolume", "documentCount", "competitionIndex"
                 ]
             }
         }
@@ -122,43 +126,45 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     required: ["blogPosts"]
 };
 
-// [v2.7] 기획안 품질 분류 — painScore + queryConfidence 조합으로 _meta.priority 태깅
-//        - 자동 탈락은 하지 않고 경고만 남겨, 사용자가 최종 선택권을 가진다.
-//        - 필드 누락(legacy 응답) 시에도 안전하게 기본값 처리.
+// [v2.7] 기획안 품질 분류 — painScore + queryConfidence + competitionIndex 조합으로 _meta.priority 태깅
 function annotateAnalysisPriority(analysisResult) {
     if (!analysisResult || !Array.isArray(analysisResult.blogPosts)) return analysisResult;
 
     for (const post of analysisResult.blogPosts) {
         const painScore = Number.isInteger(post.painScore) ? post.painScore : null;
         const confidence = typeof post.queryConfidence === 'string' ? post.queryConfidence : null;
+        const compIdx = typeof post.competitionIndex === 'number' ? post.competitionIndex : null;
 
-        let priority = 'review'; // 기본값(필드 누락 시)
+        let priority = 'review'; // 기본값
         let reason = '';
 
         if (painScore === null && confidence === null) {
             priority = 'review';
-            reason = 'painScore/queryConfidence 누락 — legacy 또는 모델이 빼먹음';
+            reason = 'painScore/queryConfidence 누락';
         } else if (confidence === 'Low') {
             priority = 'review';
-            reason = 'queryConfidence=Low — 검색 수요 확신 부족';
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — queryConfidence=Low, 재검토 권장`);
+            reason = 'queryConfidence=Low';
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — queryConfidence=Low`);
+        } else if (compIdx !== null && compIdx < 0.5 && (painScore ?? 0) >= 8) {
+            priority = 'primary';
+            reason = `💎 블루오션 발견 (경쟁률 ${compIdx} < 0.5)`;
         } else if ((painScore ?? 0) >= 9 && confidence === 'High') {
             priority = 'primary';
-            reason = 'painScore≥9 + confidence=High — 메인 기획 적합';
+            reason = '🔥 수요 높음 (painScore 9+ & High)';
         } else if ((painScore ?? 0) >= 6 && confidence !== 'Low') {
             priority = 'secondary';
-            reason = 'painScore 6~8 또는 confidence≠Low — 보조 기획 허용';
+            reason = '평이한 수준';
         } else if ((painScore ?? 0) < 6) {
             priority = 'review';
-            reason = `painScore=${painScore} — 페인 약함, 재검토 권장`;
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — painScore=${painScore}, 검색 수요 약함`);
+            reason = `painScore=${painScore} — 페인 약함`;
         }
 
         post._meta = {
             priority,
             reason,
             painScore,
-            queryConfidence: confidence
+            queryConfidence: confidence,
+            competitionIndex: compIdx
         };
     }
 
@@ -230,11 +236,11 @@ async function getBestModels() {
             // 점수 내림차순(가장 똑똑한 모델이 0번 인덱스) 정렬
             models.sort((a, b) => getScore(b) - getScore(a));
             
-            // 너무 많은 모델을 시도할 필요는 없으므로 상위 10개만 유지
-            cachedModels = models.slice(0, 10);
+            // 모든 가용 모델 캐싱 (slice 제거)
+            cachedModels = models;
             cachedModelsAt = Date.now();
             logger.info(`[System] Dynamically loaded ${cachedModels.length} models (TTL 6h). Highest intelligence: ${cachedModels[0]}`);
-            return cachedModels;
+            return cachedModels.slice(0, 10);
 
         } catch (error) {
             logger.warn(`[System] Failed to fetch models dynamically with a key: ${error.message}`);
@@ -244,6 +250,19 @@ async function getBestModels() {
     
     logger.error("[System] Failed to fetch models dynamically with all API keys. Failing explicitly.");
     return [];
+}
+
+// [Step 1용] 가벼운 모델 우선 추출
+async function getLiteModels() {
+    const top10 = await getBestModels(); 
+    const models = cachedModels || top10;
+    // lite 가 포함되거나 8b(가장 가벼운 체급), gemma(경량 모델) 필터링
+    const liteList = models
+        .filter(name => name.includes('lite') || name.includes('8b') || name.includes('gemma'))
+        .reverse(); // 뒤에 있는 것들이 보통 더 가벼움
+    
+    // 만약 리스트가 비어있으면 상위 모델 중 뒤에 있는 것들 폴백
+    return liteList.length > 0 ? liteList : [...top10].reverse();
 }
 
 // --- Translation Helper (For better image search) ---
@@ -1345,12 +1364,153 @@ app.get('/api/trends', async (req, res) => {
     }
 });
 
+// --- Naver SearchAd API Helpers ---
+function generateSearchAdSignature(method, uri, secretKey, apiKey) {
+    const timestamp = Date.now().toString();
+    const message = `${timestamp}.${method}.${uri}`;
+    const hash = crypto.createHmac('sha256', secretKey).update(message).digest('base64');
+    return { timestamp, hash };
+}
+
+async function getNaverKeywordMetrics(keywords) {
+    if (!process.env.SEARCHAD_ACCESS_LICENSE || !process.env.SEARCHAD_SECRET_KEY || !process.env.SEARCHAD_CUSTOMER_ID) {
+        logger.warn('[Metrics] Naver SearchAd API keys missing. Skipping metrics.');
+        return {};
+    }
+
+    const customerId = process.env.SEARCHAD_CUSTOMER_ID;
+    const license = process.env.SEARCHAD_ACCESS_LICENSE;
+    const secretKey = process.env.SEARCHAD_SECRET_KEY;
+    
+    // 1. 월간 검색량 (SearchAd API)
+    // 한 번에 최대 5개 키워드 조회 가능
+    const kChunks = [];
+    for (let i = 0; i < keywords.length; i += 5) {
+        kChunks.push(keywords.slice(i, i + 5));
+    }
+
+    const metrics = {};
+
+    for (const chunk of kChunks) {
+        try {
+            // [Fix] 네이버 검색광고 API는 키워드 내 공백(띄어쓰기)을 절대 허용하지 않음 (Invalid Parameter 오류 방지)
+            const sanitizedChunk = chunk.map(k => String(k).replace(/\s+/g, '').trim()).filter(Boolean);
+            if (sanitizedChunk.length === 0) continue;
+
+            const uri = '/keywordstool';
+            const { timestamp, hash } = generateSearchAdSignature('GET', uri, secretKey, license);
+            
+            const res = await axios.get(`https://api.searchad.naver.com${uri}`, {
+                params: { hintKeywords: sanitizedChunk.join(','), showDetail: '1' },
+                headers: {
+                    'X-Timestamp': timestamp,
+                    'X-API-KEY': license,
+                    'X-Customer': customerId,
+                    'X-Signature': hash
+                }
+            });
+
+            if (res.data && res.data.keywordList) {
+                res.data.keywordList.forEach(item => {
+                    const pc = parseInt(item.monthlyPcQcCnt) || 0;
+                    const mo = parseInt(item.monthlyMobileQcCnt) || 0;
+                    metrics[item.relKeyword] = {
+                        searchVolume: pc + mo,
+                        pcVolume: pc,
+                        mobileVolume: mo
+                    };
+                });
+            }
+        } catch (e) {
+            logger.error(`[Metrics] SearchAd API Error: ${e.response?.data?.message || e.message}`);
+        }
+    }
+
+    // 2. 블로그 문서 수 (Search API)
+    for (const kw of Object.keys(metrics)) {
+        try {
+            const blogRes = await axios.get('https://openapi.naver.com/v1/search/blog.json', {
+                params: { query: kw, display: 1 },
+                headers: {
+                    'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+                    'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
+                }
+            });
+            const total = blogRes.data.total || 0;
+            metrics[kw].documentCount = total;
+            // 경쟁 지수 연산 (문서 수 / 검색량)
+            const vol = metrics[kw].searchVolume || 1;
+            metrics[kw].competitionIndex = parseFloat((total / vol).toFixed(2));
+        } catch (e) {
+            logger.warn(`[Metrics] Naver Search API Error for "${kw}": ${e.message}`);
+        }
+    }
+
+    return metrics;
+}
+
+// [Step 1] Lite 모델을 이용한 검색 키워드 추출
+async function extractSearchKeywords(trendsData, lang) {
+    const liteModels = await getLiteModels();
+    const apiKey1 = process.env.GEMINI_API_KEY;
+    const apiKey2 = process.env.GEMINI_API_KEY_2;
+    const apis = [{ name: 'API_1', key: apiKey1 }, { name: 'API_2', key: apiKey2 }].filter(a => a.key);
+
+    for (const api of apis) {
+        const genAI = new GoogleGenerativeAI(api.key);
+        for (const modelName of liteModels) {
+            try {
+                logger.process(`[Keyword Extraction] Using ${modelName} to refine search terms...`);
+                const model = genAI.getGenerativeModel({ 
+                    model: modelName,
+                    generationConfig: { responseMimeType: "application/json" } // JSON 모드 강제
+                });
+
+                const prompt = promptManager.getPrompt('keyword_extraction', lang, {
+                    trends_data: JSON.stringify(trendsData)
+                });
+
+                const result = await model.generateContent(prompt);
+                const text = result.response.text().trim();
+                
+                // 정밀한 JSON 추출 (코드 블록 및 앞뒤 쓰레기 텍스트 방어)
+                const jsonMatch = text.match(/\[\s*".*"\s*\]/s);
+                const cleanJson = jsonMatch ? jsonMatch[0] : text.replace(/^```json|```$/gi, "").trim();
+                
+                const keywords = JSON.parse(cleanJson);
+                if (Array.isArray(keywords)) {
+                    logger.success(`[Keyword Extraction] Successfully extracted ${keywords.length} terms: ${keywords.join(', ')}`);
+                    return keywords;
+                }
+            } catch (e) {
+                logger.warn(`[Keyword Extraction] Model ${modelName} failed: ${e.message}`);
+            }
+        }
+    }
+    return [];
+}
+
 app.post('/api/analyze', async (req, res) => {
   const { trends, manualText, config, region = 'KR' } = req.body;
   const topicCount = config?.topicCount || 3;
-  // [v2.6] 기본값 false — useSearch=true 는 Grounding + responseSchema 동시 사용 제약이 있고, 실사용에서 모델 차단(429/503) 빈도도 높아 opt-in 방식으로 전환
   const useSearch = config?.useSearch === true;
   const lang = region === 'US' ? 'en' : 'ko';
+
+  // [Step 1 & 2] 네이버 데이터 기반 블루오션 필터링 레이어
+  let metricsContext = "";
+  try {
+      // 영미권도 일단은 네이버 API를 사용하도록 작업 (추후 분리 용이하게)
+      const searchTerms = await extractSearchKeywords(manualText ? { text: manualText } : trends, lang);
+      if (searchTerms.length > 0) {
+          const metrics = await getNaverKeywordMetrics(searchTerms);
+          metricsContext = Object.entries(metrics).map(([kw, data]) => 
+              `- 키워드: ${kw} / 월간검색량: ${data.searchVolume} / 발행문서수: ${data.documentCount} / 경쟁지수: ${data.competitionIndex}`
+          ).join('\n');
+          logger.success(`[Analysis] Successfully gathered metrics for ${searchTerms.length} terms.`);
+      }
+  } catch (e) {
+      logger.warn(`[Analysis] Blue-ocean metrics gathering failed: ${e.message}`);
+  }
 
   const modelsToTry = await getBestModels();
   let lastError = null;

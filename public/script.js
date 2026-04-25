@@ -582,6 +582,38 @@ function esc(s) {
 function renderAIAnalysis(data) {
     const aiContent = document.getElementById('ai-content');
 
+    // [v3.1] Checked Keywords Pool Table 렌더링
+    let poolHtml = '';
+    if (data._keywordPool && Object.keys(data._keywordPool).length > 0) {
+        let poolRows = Object.entries(data._keywordPool).map(([kw, d]) => `
+            <tr>
+                <td>${esc(kw)}</td>
+                <td>${d.searchVolume.toLocaleString()}</td>
+                <td>${d.documentCount.toLocaleString()}</td>
+                <td class="${d.competitionIndex < 0.5 ? 'blue-ocean-text' : ''}">${d.competitionIndex}</td>
+            </tr>
+        `).join('');
+        
+        poolHtml = `
+            <div class="pool-section">
+                <div class="pool-title">📊 Checked Keywords Pool (Real-time Naver Metrics)</div>
+                <div class="pool-table-wrapper">
+                    <table class="pool-table">
+                        <thead>
+                            <tr>
+                                <th>KEYWORD</th>
+                                <th>VOLUME</th>
+                                <th>DOCS</th>
+                                <th>COMP</th>
+                            </tr>
+                        </thead>
+                        <tbody>${poolRows}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
     // [v2.7] 기획안을 priority 기준으로 정렬 (원본 순서는 index 로 보존)
     const sortedPosts = (data.blogPosts || [])
         .map((post, origIndex) => ({ post, origIndex }))
@@ -658,6 +690,28 @@ function renderAIAnalysis(data) {
                 </div>`
             : '';
 
+        // [v3.1] Metrics Badge Row (TARGET_KW 추가)
+        const metricsHtml = (post.searchVolume !== undefined)
+            ? `<div class="metrics-row">
+                <div class="metric-item" style="flex: 2">
+                    <span class="m-label">TARGET_KW:</span>
+                    <span class="m-value" style="color:var(--namu-color)">${esc(post.targetKeyword || 'N/A')}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="m-label">SEARCH:</span>
+                    <span class="m-value">${post.searchVolume.toLocaleString()}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="m-label">DOCS:</span>
+                    <span class="m-value">${(post.documentCount || 0).toLocaleString()}</span>
+                </div>
+                <div class="metric-item ${post.competitionIndex < 0.5 ? 'blue-ocean' : ''}" title="경쟁 지수 — 0.5 미만이면 블루오션">
+                    <span class="m-label">COMP:</span>
+                    <span class="m-value">${post.competitionIndex}</span>
+                </div>
+               </div>`
+            : '';
+
         // [v2.7] infoGainAngle — 강조 박스
         const infoGain = post.infoGainAngle && post.infoGainAngle.description
             ? `<div class="info-gain-box" title="이 글의 핵심 차별화 앵글">
@@ -691,8 +745,10 @@ function renderAIAnalysis(data) {
                     ${painBadge}
                     ${confBadge}
                 </div>
+                ${post._meta?.reason ? `<div class="priority-reason-text">${esc(post._meta.reason)}</div>` : ''}
                 <div class="post-title" style="color:var(--text-color)">${esc(title)}</div>
                 ${serpGap}
+                ${metricsHtml}
                 ${infoGain}
                 <div class="post-reason"><span class="highlight-tag">CATEGORY:</span> ${esc(post.category)}</div>
                 <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${esc(post.searchIntent)}</div>
@@ -722,6 +778,7 @@ function renderAIAnalysis(data) {
         <div class="analysis-grid">
             <div class="post-section">
                 <h3>VIRAL_HIJACKING_STRATEGIES (TOP_${sortedPosts.length})</h3>
+                ${poolHtml}
                 ${statsBar}
                 <div class="post-list">
                     ${cardsHtml}

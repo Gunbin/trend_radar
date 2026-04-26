@@ -43,6 +43,7 @@ function loadSettings() {
             }
             APP_CONFIG.interval = parsed.interval || APP_CONFIG.interval;
             APP_CONFIG.topicCount = parsed.topicCount || APP_CONFIG.topicCount;
+            APP_CONFIG.refreshDays = parsed.refreshDays || 30;
             APP_CONFIG.region = parsed.region || APP_CONFIG.region;
             APP_CONFIG.useSearch = parsed.hasOwnProperty('useSearch') ? parsed.useSearch : APP_CONFIG.useSearch;
         } catch (e) {
@@ -73,6 +74,8 @@ function syncUIToSettings() {
 
     document.getElementById('cfg-use-search').checked = APP_CONFIG.useSearch;
     document.getElementById('cfg-topics').value = APP_CONFIG.topicCount;
+    const cfgRefreshDays = document.getElementById('cfg-refresh-days');
+    if (cfgRefreshDays) cfgRefreshDays.value = APP_CONFIG.refreshDays || 30;
     document.getElementById('region-select').value = APP_CONFIG.region || 'KR';
     
     updateIntervalHint(APP_CONFIG.interval / 1000);
@@ -102,6 +105,10 @@ function saveSettings() {
 
     APP_CONFIG.useSearch = document.getElementById('cfg-use-search').checked;
     APP_CONFIG.topicCount = parseInt(document.getElementById('cfg-topics').value);
+    const cfgRefreshDays = document.getElementById('cfg-refresh-days');
+    if (cfgRefreshDays) {
+        APP_CONFIG.refreshDays = parseInt(cfgRefreshDays.value) || 30;
+    }
     
     localStorage.setItem('trendRadar_cfg', JSON.stringify(APP_CONFIG));
     updatePanelVisibility();
@@ -170,9 +177,25 @@ function updatePanelVisibility() {
 
 async function fetchTrends() {
   try {
-    const activeSources = APP_CONFIG.region === 'KR' 
-        ? Object.entries(APP_CONFIG.sources.KR).filter(([_, val]) => val).map(([key]) => key).join(',')
-        : Object.entries(APP_CONFIG.sources.US).filter(([_, val]) => val).map(([key]) => key).join(',');
+    let activeSourcesArr = [];
+    if (APP_CONFIG.region === 'KR') {
+        if (APP_CONFIG.sources.KR.google) activeSourcesArr.push('google');
+        if (APP_CONFIG.sources.KR.nate) activeSourcesArr.push('signal'); // 서버는 nate를 'signal' 파라미터로 받음
+        if (APP_CONFIG.sources.KR.signal) activeSourcesArr.push('namu'); // 서버는 namuwiki를 'namu' 파라미터로 받음
+        if (APP_CONFIG.sources.KR.fss) activeSourcesArr.push('fss');
+        if (APP_CONFIG.sources.KR.policy) activeSourcesArr.push('policy');
+        if (APP_CONFIG.sources.KR.ppomppu) activeSourcesArr.push('ppomppu');
+        if (APP_CONFIG.sources.KR.instiz) activeSourcesArr.push('instiz');
+    } else {
+        if (APP_CONFIG.sources.US.google) activeSourcesArr.push('google');
+        if (APP_CONFIG.sources.US.reddit) activeSourcesArr.push('reddit');
+        if (APP_CONFIG.sources.US.redditScams) activeSourcesArr.push('redditScams');
+        if (APP_CONFIG.sources.US.redditPoverty) activeSourcesArr.push('redditPoverty');
+        if (APP_CONFIG.sources.US.redditFrugal) activeSourcesArr.push('redditFrugal');
+        if (APP_CONFIG.sources.US.yahoo) activeSourcesArr.push('yahoo');
+        if (APP_CONFIG.sources.US.buzzfeed) activeSourcesArr.push('buzzfeed');
+    }
+    const activeSources = activeSourcesArr.join(',');
 
     const res = await fetch(`/api/trends?region=${APP_CONFIG.region || 'KR'}&sources=${activeSources}`);
     const rawData = await res.json();
@@ -508,6 +531,35 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
         renderAIAnalysis(result);
     } catch (error) {
         aiContent.innerHTML = '<div class="error">AI ANALYSIS FAILED. CHECK API KEY AND SERVER LOGS.</div>';
+    }
+});
+
+document.getElementById('refresh-btn').addEventListener('click', async () => {
+    if (!confirm(`Are you sure you want to refresh the oldest post (older than ${APP_CONFIG.refreshDays || 30} days)?`)) return;
+    
+    const btn = document.getElementById('refresh-btn');
+    const originalText = btn.textContent;
+    btn.textContent = 'REFRESHING...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/refresh-oldest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshDays: APP_CONFIG.refreshDays || 30 })
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+            alert(`SUCCESS: ${result.message}\nURL: ${result.url || ''}`);
+        } else {
+            alert(`FAILED: ${result.message || result.error}\n${result.details || ''}`);
+        }
+    } catch (error) {
+        alert('REFRESH ERROR: ' + error.message);
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
     }
 });
 

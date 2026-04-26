@@ -21,6 +21,7 @@
           </select>
           <button id="settings-btn" class="settings-btn">⚙ SETTINGS</button>
           <button id="manual-btn" class="manual-input-btn">✎ MANUAL INPUT</button>
+          <button id="refresh-btn" class="ai-btn" style="background:#0ff; color:#000; padding: 0.5rem 1rem;">REFRESH POST</button>
           <button id="analyze-btn" class="ai-btn">GENERATE AI INSIGHTS</button>
       </div>
       <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
@@ -208,6 +209,14 @@
                       <label>AI_TOPIC_COUNT (MAX 5)</label>
                       <input type="range" id="cfg-topics" min="1" max="5" value="3">
                       <span id="topics-val">3 TOPICS</span>
+                  </div>
+                  <div class="setting-group">
+                      <label>FRESHNESS_TARGET_DAYS</label>
+                      <div class="input-with-hint">
+                          <input type="number" id="cfg-refresh-days" value="30" min="1" max="365">
+                          <span class="hint-text">DAYS OLD</span>
+                      </div>
+                      <p class="hint-text" style="margin-top:5px; font-size:0.8rem; opacity:0.7;">* 설정한 기간 이상 지난 글을 갱신합니다.</p>
                   </div>
               </div>
               <div id="tab-prompts" class="tab-content hidden">

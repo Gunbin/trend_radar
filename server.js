@@ -32,7 +32,7 @@ cloudinary.config({
 const COUPANG_AFFILIATE_ID = 'AF7891014';
 const COUPANG_ELIGIBLE_CATEGORIES = ['Tech and IT', 'Finance', 'Life and Health'];
 const PUBLISHED_INDEX_FILE = path.join(process.cwd(), 'published-index.json');
-const PUBLISHED_INDEX_TTL_DAYS = 30;
+const PUBLISHED_INDEX_TTL_DAYS = 365;
 const MODELS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6시간
 
 // angleType 허용 값 (post_writing_* 템플릿 키 조회에 직접 사용되므로 화이트리스트 필수)
@@ -2369,6 +2369,127 @@ app.post('/api/push-github', async (req, res) => {
           details: error.response?.data?.message || error.message
       });
   }
+});
+
+// --- Freshness Update Helpers ---
+async function getLatestNaverNews(keyword) {
+    if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
+        throw new Error('Naver API keys are missing in .env');
+    }
+    const response = await axios.get('https://openapi.naver.com/v1/search/news.json', {
+        params: { query: keyword, display: 1, sort: 'date' },
+        headers: {
+            'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+            'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
+        }
+    });
+    if (response.data && response.data.items && response.data.items.length > 0) {
+        return response.data.items[0].title.replace(/<[^>]*>?/g, '').replace(/&quot;/g, '"');
+    }
+    throw new Error('No news found for keyword: ' + keyword);
+}
+
+app.post('/api/refresh-oldest', async (req, res) => {
+    try {
+        const targetDays = Number(req.body.refreshDays) || 30;
+        const index = prunePublishedIndex(readPublishedIndex());
+        const now = Date.now();
+        const DAY = 86400000;
+
+        const candidates = index.filter(p => {
+            if (!p.publishedAt) return false;
+            const isOldEnough = (now - new Date(p.publishedAt).getTime()) > targetDays * DAY;
+            const notRefreshedRecently = !p.lastRefreshedAt || (now - new Date(p.lastRefreshedAt).getTime()) > 7 * DAY;
+            return isOldEnough && notRefreshedRecently;
+        }).sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+
+        if (candidates.length === 0) {
+            return res.json({ success: false, message: `No post found older than ${targetDays} days that hasn't been refreshed recently.` });
+        }
+
+        const target = candidates[0];
+        logger.process(`[Refresh] Target found: ${target.slug} (published: ${target.publishedAt})`);
+
+        let newsTitle = target.mainKeyword;
+        try {
+            newsTitle = await getLatestNaverNews(target.mainKeyword);
+            logger.process(`[Refresh] Fetched news: ${newsTitle}`);
+        } catch (e) {
+            logger.warn(`[Refresh] Naver news fetch failed, falling back to keyword. ${e.message}`);
+        }
+
+        const modelsToTry = await getBestModels();
+        const liteModels = modelsToTry.filter(m => m.includes('flash') || m.includes('lite'));
+        if (liteModels.length === 0) liteModels.push(modelsToTry[0]);
+        
+        const apiKey1 = process.env.GEMINI_API_KEY;
+        const apiKey2 = process.env.GEMINI_API_KEY_2;
+        const apis = [{ name: 'API_1', key: apiKey1 }, { name: 'API_2', key: apiKey2 }].filter(a => a.key);
+
+        let summary = '';
+        for (const api of apis) {
+            if (summary) break;
+            const genAI = new GoogleGenerativeAI(api.key);
+            for (const modelName of liteModels) {
+                try {
+                    const model = genAI.getGenerativeModel({ model: modelName });
+                    const prompt = target.lang === 'en'
+                        ? `Summarize this news title into one short sentence (under 10 words): "${newsTitle}"`
+                        : `다음 뉴스 제목을 50자 이내의 짧은 한 문장으로 요약해줘: "${newsTitle}"`;
+                    const result = await model.generateContent(prompt);
+                    summary = result.response.text().trim();
+                    break;
+                } catch (e) { continue; }
+            }
+        }
+
+        if (!summary) throw new Error('Failed to generate summary via Gemini');
+        logger.success(`[Refresh] Generated summary: ${summary}`);
+
+        const repoOwner = 'Gunbin';
+        const repoName = 'gunbin.github.io';
+        const githubFilePath = `content/${target.lang === 'en' ? 'en' : 'ko'}/blog/${target.slug}.md`;
+        const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${githubFilePath}`;
+
+        const getResponse = await axios.get(apiUrl, {
+            headers: { 'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }
+        });
+
+        let contentStr = Buffer.from(getResponse.data.content, 'base64').toString('utf8');
+        const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '.').substring(2);
+        const updateLine = target.lang === 'en' 
+            ? `\n\n*Update (${dateStr}): ${summary}*\n`
+            : `\n\n*업데이트 (${dateStr}): ${summary}*\n`;
+
+        contentStr += updateLine;
+        const base64Content = Buffer.from(contentStr, 'utf8').toString('base64');
+
+        const putResponse = await axios.put(apiUrl, {
+            message: `Auto-refresh: Update ${target.slug} with latest news`,
+            content: base64Content,
+            sha: getResponse.data.sha,
+            branch: 'main'
+        }, {
+            headers: { 'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }
+        });
+
+        target.lastRefreshedAt = new Date().toISOString();
+        const allIndex = prunePublishedIndex(readPublishedIndex());
+        const targetIndex = allIndex.findIndex(p => p.slug === target.slug && p.lang === target.lang);
+        if (targetIndex !== -1) {
+            allIndex[targetIndex].lastRefreshedAt = target.lastRefreshedAt;
+            writePublishedIndex(allIndex);
+        }
+
+        // Trigger Google Indexing if available
+        const liveUrl = `https://gunbin.github.io/${target.lang === 'en' ? 'en/' : ''}blog/${target.slug}/`;
+        triggerGoogleIndexing(liveUrl).catch(err => logger.error('[Refresh Indexing Error]', err));
+
+        res.json({ success: true, message: `Successfully refreshed post: ${target.slug}`, url: putResponse.data.content.html_url });
+    } catch (error) {
+        logger.error('[Refresh Error]', error.message || error);
+        res.status(500).json({ success: false, error: 'Refresh failed', details: error.response?.data?.message || error.message });
+    }
 });
 
 const PORT = process.env.PORT || 3000;

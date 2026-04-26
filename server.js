@@ -785,6 +785,12 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl, currentTags =
     );
     if (!candidates.length) return markdown;
 
+    // 상단 50% 분리
+    const paragraphs = markdown.split(/\n\n+/);
+    const splitIdx = Math.ceil(paragraphs.length / 2);
+    const topHalf = paragraphs.slice(0, splitIdx).join('\n\n');
+    const botHalf = paragraphs.slice(splitIdx).join('\n\n');
+
     const currentTagsLower = (Array.isArray(currentTags) ? currentTags : []).map(t => String(t).toLowerCase().trim());
 
     // 관련성 점수: 후보의 tags/mainKeyword 와 현재 글의 tags/mainKeyword 가 얼마나 겹치는지
@@ -808,7 +814,7 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl, currentTags =
         protections.push(str);
         return `\u0000P${idx}\u0000`;
     };
-    let working = markdown
+    let working = topHalf
         .replace(/```[\s\S]*?```/g, m => stash(m))
         .replace(/`[^`\n]+`/g, m => stash(m))
         .replace(/!\[[^\]]*\]\([^)]+\)/g, m => stash(m))
@@ -839,12 +845,23 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl, currentTags =
             if (!mainKwMatch) continue;
         }
 
-        // 길이가 긴 단어부터 매칭하여 부분 치환 최소화
-        const keywordsToTry = Array.from(new Set([cand.mainKeyword, ...(cand.coreEntities || [])]
+        // 길이가 긴 단어부터 매칭하여 부분 치환 최소화 (형태소 분리 포함)
+        const rawKeywords = [cand.mainKeyword, ...(cand.coreEntities || []), ...(cand.tags || [])]
             .filter(Boolean)
             .map(String)
-            .map(s => s.trim())))
-            .filter(s => s.length >= 3) // 3글자 이상만 허용
+            .map(s => s.trim());
+            
+        const expandedKeywords = [];
+        for (const kw of rawKeywords) {
+            expandedKeywords.push(kw);
+            const parts = kw.split(' ');
+            if (parts.length > 1) {
+                expandedKeywords.push(...parts.filter(p => p.trim().length >= 2));
+            }
+        }
+
+        const keywordsToTry = Array.from(new Set(expandedKeywords))
+            .filter(s => s.length >= 2) // 형태소 2글자 이상 허용
             .filter(s => !INTERNAL_LINK_BLACKLIST.has(s)) // 광의/지역명 블랙리스트 차단
             .sort((a, b) => b.length - a.length);
 
@@ -869,8 +886,9 @@ function injectInternalLinks(markdown, currentSlug, lang, baseUrl, currentTags =
 
     // 보호 블록 복원
     working = working.replace(/\u0000P(\d+)\u0000/g, (_, i) => protections[Number(i)] || '');
-    if (injected > 0) logger.success(`[InternalLinks] Injected ${injected} link(s)`);
-    return working;
+    if (injected > 0) logger.success(`[InternalLinks] Injected ${injected} link(s) in top half`);
+    
+    return working + (botHalf ? '\n\n' + botHalf : '');
 }
 
 function buildCoupangBox(shoppableKeyword, category, lang) {

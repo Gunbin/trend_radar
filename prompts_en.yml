@@ -36,7 +36,45 @@ _shared:
     - "**Technical SEO (Dynamic Visible FAQ and Schema Markup):** Dynamically add an FAQ section at the bottom of the conclusion based on {{contentDepth}}. Omit FAQ (and schema) for 'Bite-sized' or 'Snack', write 2-3 for 'Normal', and 4-5 for 'Deep-Dive'. **DO NOT use a dull/generic heading like `### FAQ` or `## Frequently Asked Questions`. Instead, create an engaging, topic-specific header (e.g., 'What Else You Need to Know About [Topic]', 'Answering Your Burning Questions').** Utilize the provided {{searchBehaviorQueries}} colloquial patterns for FAQ questions. Insert HTML <script type=\"application/ld+json\"> FAQPage schema ONLY when there are 2 or more FAQs."
     - "**GEO Optimization (No Variable Leakage):** NEVER output variable names like {{coreEntities}} or {{targetAudience}}, nor curly braces (`{{ }}`) themselves, directly in the body. Use only the actual entity words woven naturally into the narrative."
     - "**Tone & Endings (Conversational & Relatable Base):** Strictly avoid the stiff, academic, or corporate tone typical of AI. Over 90% of the post MUST be written in a highly conversational, relatable tone—like a friend explaining something over coffee. **Use contractions heavily (e.g., 'you'll', 'it's', 'don't'), direct address ('you'), and active voice.** Reserve rigid, punchy, or formal sentences only for a 'special effect' 1–2 times per post when delivering a hard truth or a dramatic impact."
-    - "**Image Syntax Strictness:** Use `![description](IMAGE_PLACEHOLDER_N \"english keyword\")` format (N is 1, 2, 3) once per section. **CRITICAL: Outputting the placeholder string as plain text without Markdown syntax or omitting the English keyword is a fatal error.** **[Alt Text Diversity]** Every image alt MUST use a different ending pattern — mix (1) situation/scene description, (2) noun-phrase captions, (3) action verb phrases, (4) short questions. Combine 2+ patterns per post."
+    - |
+      "**Visual Element Insertion (Image / Mermaid / Markmap):**
+            Place a total of 3 visual elements (IMAGE_PLACEHOLDER_1, IMAGE_PLACEHOLDER_2, IMAGE_PLACEHOLDER_3) in the body sections.
+            For each slot, independently judge the most effective format based on the section's content:
+      
+            [① When to prioritize Mermaid or Markmap]
+            If the content fits any of the following, a diagram is more effective than an image:
+            - Step-by-step processes or sequences (e.g., application procedures)
+            - Comparisons (A vs B) or conditional branches
+            - State changes (e.g., Apply → Review → Approve)
+            - Schedules or timelines
+            - Summarizing the overall structure as a Table of Contents to aid readers
+            - Proportions or compositions with actual data/numbers
+      
+            → Choose the most appropriate type and write it as a code block:
+            · flowchart        : decision branches, procedures (MUST declare as 'flowchart LR' for horizontal layout)
+            · timeline         : schedules, history
+            · pie              : proportions (only when real numbers exist)
+            · journey          : user experience steps
+            · sequenceDiagram  : interactions between entities
+            · stateDiagram-v2  : state changes
+            · gantt            : project schedules
+            · Markmap          : overall concept map / TOC (code block language: markmap)
+      
+            [② When to prioritize Images]
+            If the content doesn't fit ①, or if atmosphere, mood, or visual imagination is important, or if a diagram would feel too stiff:
+            → Use `![alt](IMAGE_PLACEHOLDER_N "english keyword")` format.
+            → alt text MUST combine at least 2 of: situation description, noun-phrase, action verb phrase. English keyword is required.
+      
+            [Common Prohibitions]
+            - Do not use complex styling like Mermaid style or classDef.
+            - Do not insert fake numbers into a pie chart (violates coreFact).
+            - Do not use Mermaid mindmap (unstable rendering, use Markmap instead).
+            - Do not force diagrams where an image feels more natural.
+    - |
+      - "**[Hugo Shortcode Info Boxes]:** When there is critical information to convey, wrap it in the following shortcodes to make it visually stand out instead of a normal paragraph. Use a maximum of 1-2 times per post in a natural context. Do not force it.
+            - {{< tip >}}Saving points or core tips{{< /tip >}}
+            - {{< warning >}}Important warnings or easily missed conditions{{< /warning >}}
+            - {{< info >}}Supplementary explanations or related policy links{{< /info >}}
     - "**Fluidity and Wit in the Conclusion Layout:** Discard the compulsion to always end with a summary box. While boxes are great for data-heavy posts, strategically pivot the form based on the post's unique tension and wit—sometimes end with an impactful, punchy one-liner that leaves a lasting impression, or a witty question that nudges reader action."
     - "**Enriched Facts Utilization:** If {{enrichedFacts}} is provided, you MUST use these facts as the primary basis for your narrative. Use the exact numbers, dates, and institution names to build credibility. Fabricating any statistics or numbers not present in these facts or the core input is strictly prohibited."
     - "**Reference Citation Principle (SEO Optimized Anchor Text):** If the provided {{source_urls}} value exists, you MUST place it at the **very bottom** of the post. First, add the subheading `### [References]`, and below it, insert the URLs as a vertical bullet list in the exact '- [Article Title](URL)' markdown format provided. (e.g., `- [Fed Interest Rate Decision](https://news...)`). Do NOT create a reference section if no URL is provided."

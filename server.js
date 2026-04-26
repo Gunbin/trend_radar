@@ -1790,8 +1790,9 @@ async function searchNewsAPI(query) {
 
 async function enrichPostPlan(postPlan, region = 'KR') {
     try {
+        const searchBase = postPlan.targetKeyword || postPlan.mainKeyword;
         const entities = (postPlan.coreEntities || []).slice(0, 2).join(' ');
-        const query = `${postPlan.mainKeyword} ${entities}`.trim().slice(0, 50);
+        const query = `${searchBase} ${entities}`.trim().slice(0, 50);
         
         let results = [];
         
@@ -1808,11 +1809,11 @@ async function enrichPostPlan(postPlan, region = 'KR') {
 
         // 결과가 없으면 mainKeyword 단독으로 최후 검색 (fallback)
         if (results.length === 0) {
-            logger.info(`[Enrich] 정밀 쿼리 결과 없음(또는 너무 오래됨). 단일 키워드 검색 시도: ${postPlan.mainKeyword}`);
+            logger.info(`[Enrich] 정밀 쿼리 결과 없음(또는 너무 오래됨). 단일 키워드 검색 시도: ${searchBase}`);
             if (region === 'US') {
-                results = await searchNewsAPI(postPlan.mainKeyword);
+                results = await searchNewsAPI(searchBase);
             } else {
-                results = await searchNaverNews(postPlan.mainKeyword);
+                results = await searchNaverNews(searchBase);
             }
             results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
         }
@@ -1825,7 +1826,7 @@ async function enrichPostPlan(postPlan, region = 'KR') {
                     const fssData = await getFssAlerts();
                     // 팩트 연관성 체크를 위해 키워드 포함 여부 확인 (느슨한 매칭)
                     const matched = fssData.filter(item => 
-                        item.keyword.includes(postPlan.mainKeyword) || postPlan.mainKeyword.includes(item.keyword)
+                        item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
                     );
                     if (matched.length > 0) {
                         logger.info(`[Enrich] FSS 소비자경보 관련 팩트 발견 — 추가됨`);
@@ -1844,7 +1845,7 @@ async function enrichPostPlan(postPlan, region = 'KR') {
                 try {
                     const policyData = await getPolicyBriefing();
                     const matched = policyData.filter(item => 
-                        item.keyword.includes(postPlan.mainKeyword) || postPlan.mainKeyword.includes(item.keyword)
+                        item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
                     );
                     if (matched.length > 0) {
                         logger.info(`[Enrich] 정책브리핑 관련 팩트 발견 — 추가됨`);

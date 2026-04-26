@@ -39,6 +39,18 @@ const MODELS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6시간
 const ALLOWED_ANGLES = new Set(['expose', 'guide', 'compare']);
 const DEFAULT_ANGLE = 'guide';
 
+const FORMAT_MAP = {
+    'expose-Snack':      '단문 팩트 나열 → 핵심 경고 → 행동지침 1~2개',
+    'expose-Normal':     '훅 → 리스크 원인 분석 → 피해 시나리오 → 회피법 → FAQ',
+    'expose-Deep-Dive':  '훅 → 배경 → 심층 리스크 3단계 분석 → 케이스별 대응 → FAQ',
+    'guide-Snack':       '핵심 단계만 번호 목록 3~5개',
+    'guide-Normal':      '훅 → 준비물/전제 → 번호 단계 가이드 → 자주 막히는 지점 → FAQ',
+    'guide-Deep-Dive':   '훅 → 개요 → 상세 단계별 가이드 → 오류 대처법 → 고급 팁 → FAQ',
+    'compare-Snack':     '비교표 1개 + 한줄 결론',
+    'compare-Normal':    '훅 → 평가기준 제시 → 비교표 → 상황별 추천 → FAQ',
+    'compare-Deep-Dive': '훅 → 평가기준 가중치 설명 → 항목별 심층비교 → 상황별 최종결론 → FAQ',
+};
+
 // === [v2.6] trend_analysis / manual_analysis 공통 응답 스키마 ===
 // - 프롬프트의 format_rules(enum/ JSON 포맷 잔소리) 를 프롬프트에서 걷어내고 여기서 enforce
 // - Google Search Grounding(useSearch=true)과는 동시 사용 제약이 있으므로 useSearch=false 경로에서만 적용
@@ -59,6 +71,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                         required: ["lifecycle", "targetAudience"]
                     },
                     category: { type: "string", enum: ["Tech and IT", "Finance", "Life and Health", "Entertainment"] },
+                    targetKeyword: { type: "string" },
                     mainKeyword: { type: "string" },
                     angleType: { type: "string", enum: ["expose", "guide", "compare"] },
                     searchIntent: { type: "string" },
@@ -265,6 +278,12 @@ async function getLiteModels() {
     return liteList.length > 0 ? liteList : [...top10].reverse();
 }
 
+const shouldSkipModel = (apiName, modelName) => {
+    if (apiName !== 'API_1') return false;
+    const vMatch = modelName.match(/(\d+\.\d+|\d+)/);
+    return vMatch && parseFloat(vMatch[1]) < 3 && modelName.includes('flash');
+};
+
 // --- Translation Helper (For better image search) ---
 async function translateToEnglish(keyword) {
   if (!keyword || keyword.trim() === '') return 'abstract';
@@ -289,13 +308,10 @@ async function translateToEnglish(keyword) {
       let success = false;
       
       for (const modelName of models) {
-        if (api.name === 'API_1') {
-            const vMatch = modelName.match(/(\d+\.\d+|\d+)/);
-            if (vMatch && parseFloat(vMatch[1]) < 3 && modelName.includes('flash')) {
-                logger.process(`[Translation] [${api.name}] Model ${modelName} is flash and version < 3. Switching to API_2 after 3s...`);
-                await new Promise(r => setTimeout(r, 3000));
-                break; // Skip to next API
-            }
+        if (shouldSkipModel(api.name, modelName)) {
+            logger.process(`[Translation] [${api.name}] Model ${modelName} is flash and version < 3. Switching to API_2 after 3s...`);
+            await new Promise(r => setTimeout(r, 3000));
+            break; // Skip to next API
         }
         
         try {
@@ -329,16 +345,22 @@ async function translateToEnglish(keyword) {
 
 // 1. Pexels (Photos)
 async function getPexelsImage(keyword) {
+  logger.api(`[Fetch] Requesting Pexels Image for "${keyword}"`);
+  const startTime = Date.now();
   try {
     const res = await axios.get(`https://api.pexels.com/v1/search?query=${encodeURIComponent(keyword)}&per_page=10`, {
       headers: { 'Authorization': process.env.PEXELS_API_KEY }
     });
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     if (res.data.photos && res.data.photos.length > 0) {
       const randomIndex = Math.floor(Math.random() * Math.min(res.data.photos.length, 5));
+      logger.success(`[Fetch] Completed Pexels Image (${elapsed}s)`);
       return res.data.photos[randomIndex].src.landscape;
     }
+    logger.warn(`[Fetch] Completed Pexels Image (${elapsed}s) - No results`);
   } catch (error) {
-    logger.error('Pexels API Error', error.message);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    logger.error(`[Fetch] Pexels API Error (${elapsed}s)`, error.message);
   }
   return null;
 }
@@ -346,6 +368,8 @@ async function getPexelsImage(keyword) {
 // 2. Pixabay (Photos, Illustrations, Vectors)
 async function getPixabayImage(keyword, type = 'all', usedUrls = new Set()) {
   if (!process.env.PIXABAY_API_KEY) return null;
+  logger.api(`[Fetch] Requesting Pixabay Image (${type}) for "${keyword}"`);
+  const startTime = Date.now();
   try {
     const res = await axios.get(`https://pixabay.com/api/`, {
       params: {
@@ -356,6 +380,7 @@ async function getPixabayImage(keyword, type = 'all', usedUrls = new Set()) {
         safesearch: 'true'
       }
     });
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     if (res.data.hits && res.data.hits.length > 0) {
       // 섞인 후보군 생성
       const candidates = [...res.data.hits].sort(() => Math.random() - 0.5);
@@ -364,6 +389,7 @@ async function getPixabayImage(keyword, type = 'all', usedUrls = new Set()) {
         // 아직 본문에 사용되지 않은 신선한 URL만 선택
         if (!usedUrls.has(url)) {
           usedUrls.add(url); // 선택됨과 동시에 사용 목록에 기록
+          logger.success(`[Fetch] Completed Pixabay Image (${elapsed}s)`);
           return url;
         }
       }
@@ -371,21 +397,27 @@ async function getPixabayImage(keyword, type = 'all', usedUrls = new Set()) {
       // 만약 30장이 전부 다 쓰였다면 (극히 드문 경우), 어쩔 수 없이 첫 번째 이미지를 반환
       const fallbackUrl = res.data.hits[0].webformatURL;
       usedUrls.add(fallbackUrl);
+      logger.success(`[Fetch] Completed Pixabay Image (${elapsed}s) - Fallback Used`);
       return fallbackUrl;
     }
 
+    logger.warn(`[Fetch] Completed Pixabay Image (${elapsed}s) - No results`);
     // Fallback: If no results, try searching with only the first two words
     const simplified = keyword.split(' ').slice(0, 2).join(' ');
     if (simplified !== keyword) {
       return await getPixabayImage(simplified, type, usedUrls);
     }
   } catch (error) {
-    logger.error('Pixabay API Error', error.message);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    logger.error(`[Fetch] Pixabay API Error (${elapsed}s)`, error.message);
   }
   return null;
 }
+
 // 3. Openverse (Creative Commons)
 async function getOpenverseImage(keyword) {
+  logger.api(`[Fetch] Requesting Openverse Image for "${keyword}"`);
+  const startTime = Date.now();
   try {
     const res = await axios.get(`https://api.openverse.org/v1/images/`, {
       params: { 
@@ -397,6 +429,7 @@ async function getOpenverseImage(keyword) {
       headers: { 'User-Agent': 'TrendRadar/1.0' }
     });
     
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     if (res.data.results && res.data.results.length > 0) {
       // Shuffle the results to get a random one, but try multiple if some are broken
       const results = res.data.results.sort(() => Math.random() - 0.5);
@@ -411,15 +444,18 @@ async function getOpenverseImage(keyword) {
             timeout: 3000,
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
           });
+          logger.success(`[Fetch] Completed Openverse Image (${elapsed}s)`);
           return imageUrl; // Valid image found
         } catch (imgError) {
-          logger.error('Openverse Image Broken (Skipping)', imageUrl);
+          logger.warn(`[Fetch] Openverse Image Broken (Skipping): ${imageUrl}`);
           continue; // Try the next one
         }
       }
     }
+    logger.warn(`[Fetch] Completed Openverse Image (${elapsed}s) - No valid results`);
   } catch (error) {
-    logger.error('Openverse API Error', error.message);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    logger.error(`[Fetch] Openverse API Error (${elapsed}s)`, error.message);
   }
   return null;
 }
@@ -466,7 +502,7 @@ async function verifyAndFixReferences(markdown) {
 
     // 1) [References] / [참고자료] 섹션 추출 (<small>...<i>...</i></small> 형태)
     //    - 모델이 <br> 위치를 살짝 다르게 쓸 수 있으므로 유연하게 매칭
-    const refBlockRegex = /<small>[\s\S]*?<i>[\s\S]*?\[(?:References|참고자료)\][\s\S]*?<\/i>[\s\S]*?<\/small>/i;
+    const refBlockRegex = /(?:<small>[\s\S]*?<i>[\s\S]*?\[(?:References|참고자료)\][\s\S]*?<\/i>[\s\S]*?<\/small>|###\s*\[(?:References|참고자료)\][\s\S]*?(?=\n#|$))/i;
     const match = markdown.match(refBlockRegex);
     if (!match) return markdown; // 참고자료 섹션 없음 → 원본 그대로
 
@@ -537,6 +573,8 @@ async function verifyAndFixReferences(markdown) {
 // --- Cloudinary Upload Helper ---
 async function uploadToCloudinary(url) {
   if (!url) return null;
+  logger.api(`[Cloudinary] Upload 요청: ${url.substring(0, 50)}...`);
+  const startTime = Date.now();
   try {
       // 1. Download image to buffer to avoid Cloudinary fetching it directly and hitting Rate Limits (429)
       const response = await axios.get(url, { responseType: 'arraybuffer' });
@@ -558,10 +596,12 @@ async function uploadToCloudinary(url) {
           fetch_format: 'auto',
           quality: 'auto'
       }));
-      logger.success(`[Cloudinary] Uploaded image: ${optimizeUrl}`);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      logger.success(`[Cloudinary] Upload 완료 (${elapsed}s) -> ${optimizeUrl}`);
       return optimizeUrl;
   } catch (error) {
-      logger.error('Cloudinary Upload Error', error.message);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      logger.error(`[Cloudinary] Upload 실패 (${elapsed}s)`, error.message);
       return url; // 실패 시 원본 URL 폴백
   }
 }
@@ -897,16 +937,23 @@ function extractFaqFromMarkdown(markdown) {
 
 // --- API Fetch Retry Helper ---
 async function fetchWithRetry(name, fetchFn, retries = 2) {
+  logger.api(`[Fetch] Requesting: ${name}`);
+  const startTime = Date.now();
   for (let i = 0; i <= retries; i++) {
     try {
       const data = await fetchFn();
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      // 배열 형태면 length를, 아니면 success를 찍음
+      const dataInfo = Array.isArray(data) ? `Extracted ${data.length} items` : 'Success';
+      logger.success(`[Fetch] Completed: ${name} (Took ${elapsed}s, ${dataInfo})`);
       return data;
     } catch (error) {
       if (i < retries) {
-        logger.warn(`[${name}] Error: ${error.message}. Retrying ${i+1}/${retries}...`);
+        logger.warn(`[Fetch] Retry ${i+1}/${retries} for ${name}: ${error.message}`);
         await new Promise(r => setTimeout(r, 2000));
       } else {
-        logger.error(`[${name}] Final Error`, error.message);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        logger.error(`[Fetch] Failed: ${name} after ${elapsed}s`, error.message);
         return [];
       }
     }
@@ -1265,6 +1312,9 @@ async function triggerGoogleIndexing(urlToindex) {
       return;
   }
 
+  logger.api(`[Indexing API] Indexing 요청: ${urlToindex}`);
+  const startTime = Date.now();
+
   try {
       const key = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
       const jwtClient = new google.auth.JWT({
@@ -1292,9 +1342,11 @@ async function triggerGoogleIndexing(urlToindex) {
           }
       });
 
-      logger.success(`[Indexing API] Successfully requested indexing for: ${urlToindex}`);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      logger.success(`[Indexing API] Indexing 성공 (${elapsed}s) -> ${urlToindex}`);
   } catch (error) {
-      logger.error(`[Indexing API Error] Failed to request indexing for ${urlToindex}: ${error.response?.data?.error?.message || error.message}`);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      logger.error(`[Indexing API Error] Indexing 실패 (${elapsed}s) - ${urlToindex}: ${error.response?.data?.error?.message || error.message}`);
   }
 }
 
@@ -1340,8 +1392,8 @@ app.get('/api/trends', async (req, res) => {
     } else {
     const [google, signal, namu, fss, policy, ppomppu, instiz] = await Promise.all([
       checkSource('google') ? getGoogleTrends('KR') : Promise.resolve([]),
-      checkSource('nate') ? getSignalTrends() : Promise.resolve([]),
-      checkSource('signal') ? getNamuwikiTrends() : Promise.resolve([]),
+      checkSource('signal') ? getSignalTrends() : Promise.resolve([]),
+      checkSource('namu') ? getNamuwikiTrends() : Promise.resolve([]),
       checkSource('fss') ? getFssAlerts() : Promise.resolve([]),
       checkSource('policy') ? getPolicyBriefing() : Promise.resolve([]),
       checkSource('ppomppu') ? getPpomppuHotDeals() : Promise.resolve([]),
@@ -1426,27 +1478,44 @@ async function getNaverKeywordMetrics(keywords) {
         }
     }
 
-    // 2. 블로그 문서 수 (Search API)
-    for (const kw of Object.keys(metrics)) {
+    // 2. 블로그 문서 수 (Search API) - 원본 키워드에 대해서만 조회 및 100ms 딜레이
+    const originalMetrics = {};
+    for (const kw of keywords) {
+        // 공백 제거된 원본 키워드로 검색광고 결과 맵핑
+        const sanitizedKw = String(kw).replace(/\s+/g, '').trim();
+        const targetKw = kw;
+        
+        const foundKey = Object.keys(metrics).find(k => k.replace(/\s+/g, '') === sanitizedKw);
+        if (foundKey && metrics[foundKey]) {
+             originalMetrics[targetKw] = { ...metrics[foundKey] };
+        } else {
+             originalMetrics[targetKw] = { searchVolume: 1, pcVolume: 0, mobileVolume: 0 };
+        }
+
         try {
             const blogRes = await axios.get('https://openapi.naver.com/v1/search/blog.json', {
-                params: { query: kw, display: 1 },
+                params: { query: targetKw, display: 1 },
                 headers: {
                     'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
                     'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
                 }
             });
             const total = blogRes.data.total || 0;
-            metrics[kw].documentCount = total;
+            originalMetrics[targetKw].documentCount = total;
             // 경쟁 지수 연산 (문서 수 / 검색량)
-            const vol = metrics[kw].searchVolume || 1;
-            metrics[kw].competitionIndex = parseFloat((total / vol).toFixed(2));
+            const vol = originalMetrics[targetKw].searchVolume || 1;
+            originalMetrics[targetKw].competitionIndex = parseFloat((total / vol).toFixed(2));
+            
+            // 429 방지를 위한 딜레이
+            await new Promise(r => setTimeout(r, 100));
         } catch (e) {
-            logger.warn(`[Metrics] Naver Search API Error for "${kw}": ${e.message}`);
+            logger.warn(`[Metrics] Naver Search API Error for "${targetKw}": ${e.message}`);
+            originalMetrics[targetKw].documentCount = 0;
+            originalMetrics[targetKw].competitionIndex = 0;
         }
     }
 
-    return metrics;
+    return originalMetrics;
 }
 
 // [Step 1] Lite 모델을 이용한 검색 키워드 추출
@@ -1529,14 +1598,12 @@ app.post('/api/analyze', async (req, res) => {
     for (let i = 0; i < modelsToTry.length; i++) {
       const modelName = modelsToTry[i];
 
-      if (api.name === 'API_1') {
-          const vMatch = modelName.match(/(\d+\.\d+|\d+)/);
-          if (vMatch && parseFloat(vMatch[1]) < 3 && modelName.includes('flash')) {
+      if (shouldSkipModel(api.name, modelName)) {
               logger.process(`[Analysis] [${api.name}] Model ${modelName} is flash and version < 3. Switching to API_2 after 3s...`);
               await new Promise(r => setTimeout(r, 3000));
               break; // Skip to next API
           }
-      }
+      
       try {
         logger.process(`[Analysis] [${api.name}] Attempting with ${modelName} (Count: ${topicCount}, Region: ${region}, Search: ${useSearch})`);
         
@@ -1616,6 +1683,8 @@ async function searchNaverNews(query) {
         logger.warn('[Enrich] NAVER API 키 누락. 팩트 보강 검색 생략.');
         return [];
     }
+    logger.api(`[Enrich] Naver News 검색 요청: "${query}"`);
+    const startTime = Date.now();
     try {
         const res = await axios.get('https://openapi.naver.com/v1/search/news.json', {
             params: { query, display: 5, sort: 'date' },
@@ -1624,6 +1693,8 @@ async function searchNaverNews(query) {
                 'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
             }
         });
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        logger.success(`[Enrich] Naver News 검색 완료 (${elapsed}s, ${res.data.items.length}건)`);
         return res.data.items.map(item => ({
             title: item.title.replace(/<[^>]+>/g, ''),
             summary: item.description.replace(/<[^>]+>/g, ''),
@@ -1631,7 +1702,33 @@ async function searchNaverNews(query) {
             pubDate: item.pubDate
         }));
     } catch (e) {
-        logger.warn(`[Enrich] 네이버 뉴스 검색 실패: ${e.message}`);
+        // ★ 429 명시적 처리
+        if (e.response?.status === 429) {
+            logger.warn('[Enrich] 네이버 뉴스 429 Rate Limit. 3초 대기 후 1회 재시도...');
+            await sleep(3000);
+            try {
+                const retryStartTime = Date.now();
+                const retry = await axios.get('https://openapi.naver.com/v1/search/news.json', {
+                    params: { query, display: 5, sort: 'date' },
+                    headers: {
+                        'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+                        'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
+                    }
+                });
+                const elapsed = ((Date.now() - retryStartTime) / 1000).toFixed(2);
+                logger.success(`[Enrich] Naver News 재시도 성공 (${elapsed}s, ${retry.data.items.length}건)`);
+                return retry.data.items.map(item => ({
+                    title: item.title.replace(/<[^>]+>/g, ''),
+                    summary: item.description.replace(/<[^>]+>/g, ''),
+                    url: item.originallink || item.link,
+                    pubDate: item.pubDate
+                }));
+            } catch (retryErr) {
+                logger.error(`[Enrich] Naver News 재시도 실패`, retryErr.message);
+            }
+        } else {
+            logger.error(`[Enrich] Naver News 검색 실패`, e.message);
+        }
         return [];
     }
 }
@@ -1641,8 +1738,9 @@ async function searchNewsAPI(query) {
         logger.warn('[Enrich] NEWS_API_KEY 누락. 영미권 팩트 보강 검색 생략.');
         return [];
     }
+    logger.api(`[Enrich] NewsAPI 검색 요청: "${query}"`);
+    const startTime = Date.now();
     try {
-        logger.process(`[Enrich] NewsAPI 검색 요청: "${query}"`);
         const res = await axios.get('https://newsapi.org/v2/everything', {
             params: {
                 q: query,
@@ -1652,12 +1750,13 @@ async function searchNewsAPI(query) {
                 apiKey: process.env.NEWS_API_KEY
             }
         });
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
         if (res.data.status !== 'ok') {
-            logger.warn(`[Enrich] NewsAPI 반환 오류: ${res.data.message}`);
+            logger.error(`[Enrich] NewsAPI 반환 오류 (${elapsed}s)`, res.data.message);
             return [];
         }
         const articles = res.data.articles || [];
-        logger.success(`[Enrich] NewsAPI ${articles.length}건 검색 완료`);
+        logger.success(`[Enrich] NewsAPI 검색 완료 (${elapsed}s, ${articles.length}건)`);
         return articles.map(item => ({
             title: item.title || '',
             summary: item.description || item.content || '',
@@ -1665,7 +1764,8 @@ async function searchNewsAPI(query) {
             pubDate: item.publishedAt
         })).filter(item => item.title && item.url);
     } catch (e) {
-        logger.warn(`[Enrich] NewsAPI 검색 실패: ${e.message}`);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        logger.error(`[Enrich] NewsAPI 검색 실패 (${elapsed}s)`, e.message);
         return [];
     }
 }
@@ -1799,15 +1899,12 @@ app.post('/api/generate-post', async (req, res) => {
     for (let i = 0; i < modelsToTry.length; i++) {
       const modelName = modelsToTry[i];
       
-      if (api.name === 'API_1') {
-          const vMatch = modelName.match(/(\d+\.\d+|\d+)/);
-          if (vMatch && parseFloat(vMatch[1]) < 3 && modelName.includes('flash')) {
+      if (shouldSkipModel(api.name, modelName)) {
               logger.process(`[Post Gen] [${api.name}] Model ${modelName} is flash and version < 3. Switching to API_2 after 3s...`);
               await new Promise(r => setTimeout(r, 3000));
               break; // Skip to next API
           }
-      }
-
+      
       try {
         logger.process(`[Post Gen] [${api.name}] Generating content with ${modelName} (Region: ${region}, Search: ${useSearch})`);
         
@@ -1838,7 +1935,7 @@ app.post('/api/generate-post', async (req, res) => {
           searchIntent: postPlan.searchIntent,
           contentDepth: postPlan.contentDepth || 'Normal',
           conclusionType: postPlan.conclusionType || 'Q&A',
-          coreFact: postPlan.coreFact || '최신 트렌드 데이터',
+          coreFact: postPlan.coreFact || '[팩트 없음 — 수치·통계 창작 절대 금지. 기획안에 제공된 키워드와 맥락만 활용할 것]',
           coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
           subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
           seoKeywords: tags.join(', '),
@@ -1911,7 +2008,7 @@ app.post('/api/generate-post', async (req, res) => {
 
   // 2. 썸네일 생성 (title 기반)
   const selectedTitle = postPlan.viralTitles ? 
-      (postPlan.viralTitles.benefit || postPlan.viralTitles.curiosity || postPlan.viralTitles.fomo || postPlan.mainKeyword) : 
+      (postPlan.viralTitles.dataDriven || postPlan.viralTitles.curiosity || postPlan.viralTitles.solution || postPlan.mainKeyword) : 
       postPlan.viralTitle;
   
   let thumbnailSearchKeyword = selectedTitle;
@@ -2018,7 +2115,7 @@ app.post('/api/generate-post', async (req, res) => {
       // 카테고리 미적격이거나 박스 생성 실패 시 마커와 주변 공백을 제거
       const box = buildCoupangBox(rawKeyword, selectedCategory, lang);
       const markerPattern = new RegExp(`\\n*[ \\t]*${escapeRegex(m[0])}[ \\t]*\\n*`, '');
-      if (box) {
+      if (box && dynamicInjected === 0) {
           bodyMarkdown = bodyMarkdown.replace(markerPattern, '\n\n' + box + '\n\n');
           dynamicInjected++;
       } else {
@@ -2256,7 +2353,16 @@ app.post('/api/push-github', async (req, res) => {
   }
 });
 
-const PORT = 3000;
-app.listen(PORT, () => {
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, () => {
   logger.success(`TrendRadar v2.0 running at http://localhost:${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    logger.error(`Port ${PORT} is already in use. Please close the other process or use a different port (e.g., set PORT=3001 in .env).`);
+    process.exit(1);
+  } else {
+    logger.error('Server error:', err);
+  }
 });

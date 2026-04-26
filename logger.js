@@ -16,12 +16,12 @@ function getTimestamp() {
 }
 
 const logger = {
-    info: (msg) => console.log(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.blue}[INFO]${colors.reset} ${msg}`),
+    info:    (msg) => console.log(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.blue}[INFO]   ${colors.reset} ${msg}`),
     success: (msg) => console.log(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.green}[SUCCESS]${colors.reset} ${msg}`),
-    warn: (msg) => console.warn(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.yellow}[WARN]${colors.reset} ${msg}`),
-    error: (msg, err = '') => console.error(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.red}[ERROR]${colors.reset} ${msg}`, err ? `\n${colors.red}${err}${colors.reset}` : ''),
+    warn:    (msg) => console.warn(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.yellow}[WARN]   ${colors.reset} ${msg}`),
+    error:   (msg, err = '') => console.error(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.red}[ERROR]  ${colors.reset} ${msg}`, err ? `\n${colors.red}${err}${colors.reset}` : ''),
     process: (msg) => console.log(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.magenta}[PROCESS]${colors.reset} ${colors.bright}${msg}${colors.reset}`),
-    api: (msg) => console.log(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.cyan}[API]${colors.reset} ${msg}`),
+    api:     (msg) => console.log(`${colors.dim}[${getTimestamp()}]${colors.reset} ${colors.cyan}[API]    ${colors.reset} ${msg}`),
 };
 
 export default logger;

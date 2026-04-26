@@ -661,8 +661,7 @@ function renderAIAnalysis(data) {
 
     const cardsHtml = sortedPosts.map(({ post, origIndex }) => {
         const title = post.viralTitles
-            ? (post.viralTitles.curiosity || post.viralTitles.dataDriven || post.viralTitles.solution
-                || post.viralTitles.benefit || post.viralTitles.fomo || post.mainKeyword)
+            ? (post.viralTitles.curiosity || post.viralTitles.dataDriven || post.viralTitles.solution || post.mainKeyword)
             : (post.viralTitle || post.mainKeyword);
 
         // [v2.7] priority 뱃지

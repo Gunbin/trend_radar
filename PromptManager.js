@@ -5,6 +5,7 @@ import logger from './logger.js';
 class PromptManager {
     constructor() {
         this.prompts = {};
+        this.shared = {};
         this.loadConfig('ko', './prompts_ko.yml');
         this.loadConfig('en', './prompts_en.yml');
     }
@@ -16,14 +17,32 @@ class PromptManager {
                 const file = fs.readFileSync(filePath, 'utf8');
                 const config = YAML.parse(file);
                 this.prompts[lang] = config.tasks;
+                this.shared[lang] = config._shared || {};
                 logger.success(`Prompt configuration (${lang}) loaded successfully.`);
             } else {
                 logger.warn(`Prompt file not found: ${filePath}`);
                 this.prompts[lang] = {};
+                this.shared[lang] = {};
             }
         } catch (error) {
             logger.error(`Failed to load ${filePath}:`, error.message);
         }
+    }
+
+    // _shared 토큰 치환: <<analysis_seo_rules.pain_score>> 형태 지원
+    resolveSharedTokens(text, lang = 'ko') {
+        const shared = this.shared[lang] || this.shared['ko'] || {};
+        return text.replace(/<<\s*([a-zA-Z0-9_]+)(?:\.([a-zA-Z0-9_]+))?\s*>>/g, (match, rootKey, childKey) => {
+            const root = shared[rootKey];
+            if (root === undefined || root === null) return match;
+            if (!childKey) {
+                return typeof root === 'string' ? root : match;
+            }
+            if (typeof root === 'object' && root[childKey] !== undefined && root[childKey] !== null) {
+                return String(root[childKey]);
+            }
+            return match;
+        });
     }
 
     // 템플릿 변수 치환 및 최종 프롬프트 생성
@@ -48,6 +67,7 @@ class PromptManager {
         }
 
         finalPrompt += `[Content]\n${task.template}`;
+        finalPrompt = this.resolveSharedTokens(finalPrompt, lang);
 
         // 2. 전체 프롬프트에서 템플릿 변수 치환 (중요: template뿐만 아니라 rules 등 전체 적용)
         Object.keys(data).forEach(key => {

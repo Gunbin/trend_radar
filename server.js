@@ -462,7 +462,7 @@ async function getOpenverseImage(keyword) {
 
 // === [v2.6] References URL 검증 & 도메인 루트 자동 축약 ===
 // - Gemini 가 상상으로 생성한 deep-link (예: article id 가 있는 긴 URL) 가 404 를 내는 것을 방지.
-// - <small>...<i>[참고자료]|[References] ...</i></small> 블록 안의 마크다운 링크만 대상으로 한다 (본문 링크는 건드리지 않음).
+// - <small>...<i>[References] ...</i></small> 블록 안의 마크다운 링크만 대상으로 한다 (본문 링크는 건드리지 않음).
 // - 동작 규칙:
 //     1) URL 에 HEAD 요청 → 2xx/3xx 면 그대로 유지
 //     2) 실패하면 도메인 루트(`new URL(url).origin`) 로 축약 후 재검증
@@ -500,11 +500,11 @@ async function verifyUrl(url, timeoutMs = 5000) {
 async function verifyAndFixReferences(markdown) {
     if (!markdown || typeof markdown !== 'string') return markdown;
 
-    // 1) [References] / [참고자료] 섹션 추출 (<small>...<i>...</i></small> 형태)
+    // 1) [References] 섹션 추출 (<small>...<i>...</i></small> 형태)
     //    - 모델이 <br> 위치를 살짝 다르게 쓸 수 있으므로 유연하게 매칭
-    const refBlockRegex = /(?:<small>[\s\S]*?<i>[\s\S]*?\[(?:References|참고자료)\][\s\S]*?<\/i>[\s\S]*?<\/small>|###\s*\[(?:References|참고자료)\][\s\S]*?(?=\n#|$))/i;
+    const refBlockRegex = /(?:<small>[\s\S]*?<i>[\s\S]*?\[References\][\s\S]*?<\/i>[\s\S]*?<\/small>|###\s*\[References\][\s\S]*?(?=\n#|$))/i;
     const match = markdown.match(refBlockRegex);
-    if (!match) return markdown; // 참고자료 섹션 없음 → 원본 그대로
+    if (!match) return markdown; // References 섹션 없음 → 원본 그대로
 
     const originalBlock = match[0];
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
@@ -1193,7 +1193,11 @@ async function getFssAlerts() {
         if (alerts.length >= 10) return false;
         const title = $(el).text().trim();
         let link = $(el).attr('href') || '';
-        if (link.startsWith('?')) link = 'https://www.fss.or.kr/fss/bbs/B0000188/list.do' + link;
+        if (link.startsWith('?')) {
+            link = 'https://www.fss.or.kr/fss/bbs/B0000188/list.do' + link;
+        } else if (link.startsWith('/')) {
+            link = 'https://www.fss.or.kr' + link;
+        }
         
         if (title) {
             alerts.push({
@@ -2159,16 +2163,16 @@ app.post('/api/generate-post', async (req, res) => {
       }
   }
 
-  // [C2] 참고자료 `<small>...</small>` 블록에서 URL 없는 단독 출처 라인 제거
+  // [C2] References `<small>...</small>` 블록에서 URL 없는 단독 출처 라인 제거
   //      (존재하지 않는 보고서/예보명 등 AI fabrication 방지)
   bodyMarkdown = bodyMarkdown.replace(/<small>([\s\S]*?)<\/small>/g, (full, inner) => {
-      if (!/\[참고자료\]/.test(inner)) return full; // 참고자료 블록이 아니면 손대지 않음
+      if (!/\[References\]/i.test(inner)) return full; // References 블록만 처리
       const lines = inner.split(/<br\s*\/?>/i);
       const kept = lines.filter(line => {
           const trimmed = line.trim();
           if (!trimmed) return true; // 빈 줄은 포맷 유지용
           // 헤더 라벨/이탤릭 태그 라인은 보존
-          if (/^(<i>\s*)?\[참고자료\]/.test(trimmed)) return true;
+          if (/^(<i>\s*)?\[References\]/i.test(trimmed)) return true;
           if (/^(<\/i>|<i>)$/.test(trimmed)) return true;
           // 출처 항목인 경우: 마크다운 링크 `[...](http...)` 포함 여부 체크
           const isSourceItem = /^-\s/.test(trimmed);
@@ -2373,6 +2377,28 @@ app.post('/api/push-github', async (req, res) => {
 });
 
 // --- Freshness Update Helpers ---
+function applyFreshnessUpdate(contentStr, updateLine) {
+    let updated = contentStr;
+    const today = new Date().toISOString().split('T')[0];
+
+    // 1) front matter lastmod 갱신/추가
+    if (/^lastmod:\s*.+$/m.test(updated)) {
+        updated = updated.replace(/^lastmod:\s*.+$/m, `lastmod: ${today}`);
+    } else if (/^date:\s*.+$/m.test(updated)) {
+        updated = updated.replace(/^date:\s*.+$/m, (m) => `${m}\nlastmod: ${today}`);
+    }
+
+    // 2) 업데이트 노트는 본문 상단(첫 H2 직전)에 삽입
+    const firstH2Regex = /^(##\s+.+)$/m;
+    if (firstH2Regex.test(updated)) {
+        updated = updated.replace(firstH2Regex, `${updateLine}\n\n$1`);
+    } else {
+        // H2가 없으면 본문 끝에 fallback
+        updated += `\n\n${updateLine}`;
+    }
+    return updated;
+}
+
 async function getLatestNaverNews(keyword) {
     if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
         throw new Error('Naver API keys are missing in .env');
@@ -2458,11 +2484,11 @@ app.post('/api/refresh-oldest', async (req, res) => {
 
         let contentStr = Buffer.from(getResponse.data.content, 'base64').toString('utf8');
         const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '.').substring(2);
-        const updateLine = target.lang === 'en' 
-            ? `\n\n*Update (${dateStr}): ${summary}*\n`
-            : `\n\n*업데이트 (${dateStr}): ${summary}*\n`;
+        const updateLine = target.lang === 'en'
+            ? `> **Updated (${dateStr}):** ${summary}`
+            : `> **업데이트 (${dateStr}):** ${summary}`;
 
-        contentStr += updateLine;
+        contentStr = applyFreshnessUpdate(contentStr, updateLine);
         const base64Content = Buffer.from(contentStr, 'utf8').toString('base64');
 
         const putResponse = await axios.put(apiUrl, {

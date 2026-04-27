@@ -6,12 +6,13 @@ let currentGeneratedIndexEntry = null;
 let APP_CONFIG = {
     interval: 30000,
     sources: { 
-        KR: { google: true, nate: true, signal: true, fss: true, policy: true, ppomppu: true, instiz: true },
+        KR: { nate: true, gNewsBiz: true, gNewsLabor: true, aha: true, fss: true, policy: true, ppomppu: true },
         US: { google: true, reddit: true, redditScams: true, redditPoverty: true, redditFrugal: true, yahoo: true, buzzfeed: true }
     },
     // [v2.6] 실시간 검색(Grounding)은 기본 OFF. 설정 모달에서 on 시 수동 활성화.
     useSearch: false,
     topicCount: 3,
+    itemScale: 1.0,
     region: 'KR'
 };
 
@@ -23,9 +24,10 @@ function loadSettings() {
             const parsed = JSON.parse(saved);
             // Migrate old sources format
             if (parsed.sources && typeof parsed.sources.google === 'boolean') {
-                APP_CONFIG.sources.KR.google = parsed.sources.google;
-                APP_CONFIG.sources.KR.nate = parsed.sources.nate;
-                APP_CONFIG.sources.KR.signal = parsed.sources.signal;
+                APP_CONFIG.sources.KR.nate = parsed.sources.nate !== false;
+                APP_CONFIG.sources.KR.gNewsBiz = true;
+                APP_CONFIG.sources.KR.gNewsLabor = true;
+                APP_CONFIG.sources.KR.aha = true;
             } else if (parsed.sources) {
                 // Merge loaded config but default new ones to true
                 const loadedKR = parsed.sources.KR || {};
@@ -34,6 +36,10 @@ function loadSettings() {
                     ...loadedKR
                 };
                 delete APP_CONFIG.sources.KR.fmkorea; // Remove deprecated source from localStorage
+                delete APP_CONFIG.sources.KR.google;
+                delete APP_CONFIG.sources.KR.namu;
+                delete APP_CONFIG.sources.KR.instiz;
+                delete APP_CONFIG.sources.KR.signal;
                 
                 const loadedUS = parsed.sources.US || {};
                 APP_CONFIG.sources.US = {
@@ -44,6 +50,7 @@ function loadSettings() {
             APP_CONFIG.interval = parsed.interval || APP_CONFIG.interval;
             APP_CONFIG.topicCount = parsed.topicCount || APP_CONFIG.topicCount;
             APP_CONFIG.refreshDays = parsed.refreshDays || 30;
+            APP_CONFIG.itemScale = [0.5, 1.0, 1.5].includes(parsed.itemScale) ? parsed.itemScale : APP_CONFIG.itemScale;
             APP_CONFIG.region = parsed.region || APP_CONFIG.region;
             APP_CONFIG.useSearch = parsed.hasOwnProperty('useSearch') ? parsed.useSearch : APP_CONFIG.useSearch;
         } catch (e) {
@@ -56,13 +63,13 @@ function loadSettings() {
 function syncUIToSettings() {
     document.getElementById('cfg-interval').value = APP_CONFIG.interval / 1000;
     
-    document.getElementById('src-google').checked = APP_CONFIG.sources.KR.google;
     document.getElementById('src-nate').checked = APP_CONFIG.sources.KR.nate;
-    document.getElementById('src-signal').checked = APP_CONFIG.sources.KR.signal;
+    document.getElementById('src-gnews-biz').checked = APP_CONFIG.sources.KR.gNewsBiz !== false;
+    document.getElementById('src-gnews-labor').checked = APP_CONFIG.sources.KR.gNewsLabor !== false;
+    document.getElementById('src-aha').checked = APP_CONFIG.sources.KR.aha !== false;
     document.getElementById('src-fss').checked = APP_CONFIG.sources.KR.fss !== false;
     document.getElementById('src-policy').checked = APP_CONFIG.sources.KR.policy !== false;
     document.getElementById('src-ppomppu').checked = APP_CONFIG.sources.KR.ppomppu !== false;
-    document.getElementById('src-instiz').checked = APP_CONFIG.sources.KR.instiz !== false;
     
     document.getElementById('src-google-us').checked = APP_CONFIG.sources.US.google;
     document.getElementById('src-reddit').checked = APP_CONFIG.sources.US.reddit;
@@ -74,6 +81,8 @@ function syncUIToSettings() {
 
     document.getElementById('cfg-use-search').checked = APP_CONFIG.useSearch;
     document.getElementById('cfg-topics').value = APP_CONFIG.topicCount;
+    document.getElementById('cfg-item-scale').value = APP_CONFIG.itemScale;
+    updateItemScaleHint(APP_CONFIG.itemScale);
     const cfgRefreshDays = document.getElementById('cfg-refresh-days');
     if (cfgRefreshDays) cfgRefreshDays.value = APP_CONFIG.refreshDays || 30;
     document.getElementById('region-select').value = APP_CONFIG.region || 'KR';
@@ -87,13 +96,13 @@ function syncUIToSettings() {
 function saveSettings() {
     APP_CONFIG.interval = parseInt(document.getElementById('cfg-interval').value) * 1000;
     
-    APP_CONFIG.sources.KR.google = document.getElementById('src-google').checked;
     APP_CONFIG.sources.KR.nate = document.getElementById('src-nate').checked;
-    APP_CONFIG.sources.KR.signal = document.getElementById('src-signal').checked;
+    APP_CONFIG.sources.KR.gNewsBiz = document.getElementById('src-gnews-biz').checked;
+    APP_CONFIG.sources.KR.gNewsLabor = document.getElementById('src-gnews-labor').checked;
+    APP_CONFIG.sources.KR.aha = document.getElementById('src-aha').checked;
     APP_CONFIG.sources.KR.fss = document.getElementById('src-fss').checked;
     APP_CONFIG.sources.KR.policy = document.getElementById('src-policy').checked;
     APP_CONFIG.sources.KR.ppomppu = document.getElementById('src-ppomppu').checked;
-    APP_CONFIG.sources.KR.instiz = document.getElementById('src-instiz').checked;
     
     APP_CONFIG.sources.US.google = document.getElementById('src-google-us').checked;
     APP_CONFIG.sources.US.reddit = document.getElementById('src-reddit').checked;
@@ -105,6 +114,7 @@ function saveSettings() {
 
     APP_CONFIG.useSearch = document.getElementById('cfg-use-search').checked;
     APP_CONFIG.topicCount = parseInt(document.getElementById('cfg-topics').value);
+    APP_CONFIG.itemScale = parseFloat(document.getElementById('cfg-item-scale').value) || 1.0;
     const cfgRefreshDays = document.getElementById('cfg-refresh-days');
     if (cfgRefreshDays) {
         APP_CONFIG.refreshDays = parseInt(cfgRefreshDays.value) || 30;
@@ -128,20 +138,20 @@ function updatePanelVisibility() {
     const isKR = APP_CONFIG.region === 'KR';
     
     // Clear all lists when switching to avoid stale data display
-    const lists = ['google-list', 'signal-list', 'namu-list', 'fss-list', 'policy-list', 'ppomppu-list', 'instiz-list', 'reddit-list', 'reddit-scams-list', 'reddit-poverty-list', 'reddit-frugal-list', 'yahoo-list', 'buzzfeed-list'];
+    const lists = ['google-list', 'signal-list', 'gnews-labor-list', 'fss-list', 'policy-list', 'ppomppu-list', 'aha-list', 'reddit-list', 'reddit-scams-list', 'reddit-poverty-list', 'reddit-frugal-list', 'yahoo-list', 'buzzfeed-list'];
     lists.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = '<li class="loading">SWITCHING REGION...</li>';
     });
     
     if (isKR) {
-        document.querySelector('.google-panel').style.display = APP_CONFIG.sources.KR.google ? 'flex' : 'none';
+        document.querySelector('.google-panel').style.display = APP_CONFIG.sources.KR.gNewsBiz ? 'flex' : 'none';
         document.querySelector('.signal-panel').style.display = APP_CONFIG.sources.KR.nate ? 'flex' : 'none';
-        document.querySelector('.namu-panel').style.display = APP_CONFIG.sources.KR.signal ? 'flex' : 'none';
+        document.querySelector('.namu-panel').style.display = APP_CONFIG.sources.KR.gNewsLabor ? 'flex' : 'none';
         document.querySelector('.fss-panel').style.display = APP_CONFIG.sources.KR.fss ? 'flex' : 'none';
         document.querySelector('.policy-panel').style.display = APP_CONFIG.sources.KR.policy ? 'flex' : 'none';
         document.querySelector('.ppomppu-panel').style.display = APP_CONFIG.sources.KR.ppomppu ? 'flex' : 'none';
-        document.querySelector('.instiz-panel').style.display = APP_CONFIG.sources.KR.instiz ? 'flex' : 'none';
+        document.querySelector('.instiz-panel').style.display = APP_CONFIG.sources.KR.aha ? 'flex' : 'none';
         
         document.querySelector('.reddit-panel').style.display = 'none';
         document.querySelector('.reddit-scams-panel').style.display = 'none';
@@ -152,7 +162,7 @@ function updatePanelVisibility() {
         
         document.getElementById('src-group-kr').classList.remove('hidden');
         document.getElementById('src-group-us').classList.add('hidden');
-        document.querySelector('.google-panel .panel-title').innerHTML = '> GOOGLE_TRENDS_KR <span class="blink">_</span>';
+        document.querySelector('.google-panel .panel-title').innerHTML = '> GOOGLE_NEWS_BIZ <span class="blink">_</span>';
     } else {
         document.querySelector('.google-panel').style.display = APP_CONFIG.sources.US.google ? 'flex' : 'none';
         document.querySelector('.signal-panel').style.display = 'none';
@@ -179,13 +189,13 @@ async function fetchTrends() {
   try {
     let activeSourcesArr = [];
     if (APP_CONFIG.region === 'KR') {
-        if (APP_CONFIG.sources.KR.google) activeSourcesArr.push('google');
         if (APP_CONFIG.sources.KR.nate) activeSourcesArr.push('signal'); // 서버는 nate를 'signal' 파라미터로 받음
-        if (APP_CONFIG.sources.KR.signal) activeSourcesArr.push('namu'); // 서버는 namuwiki를 'namu' 파라미터로 받음
+        if (APP_CONFIG.sources.KR.gNewsBiz) activeSourcesArr.push('gNewsBiz');
+        if (APP_CONFIG.sources.KR.gNewsLabor) activeSourcesArr.push('gNewsLabor');
+        if (APP_CONFIG.sources.KR.aha) activeSourcesArr.push('aha');
         if (APP_CONFIG.sources.KR.fss) activeSourcesArr.push('fss');
         if (APP_CONFIG.sources.KR.policy) activeSourcesArr.push('policy');
         if (APP_CONFIG.sources.KR.ppomppu) activeSourcesArr.push('ppomppu');
-        if (APP_CONFIG.sources.KR.instiz) activeSourcesArr.push('instiz');
     } else {
         if (APP_CONFIG.sources.US.google) activeSourcesArr.push('google');
         if (APP_CONFIG.sources.US.reddit) activeSourcesArr.push('reddit');
@@ -197,19 +207,20 @@ async function fetchTrends() {
     }
     const activeSources = activeSourcesArr.join(',');
 
-    const res = await fetch(`/api/trends?region=${APP_CONFIG.region || 'KR'}&sources=${activeSources}`);
+    const res = await fetch(`/api/trends?region=${APP_CONFIG.region || 'KR'}&sources=${activeSources}&itemScale=${APP_CONFIG.itemScale}`);
     const rawData = await res.json();
     
     // Filter data based on active settings and region
     const data = {
         timestamp: rawData.timestamp,
-        google: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.google) || (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.google) ? rawData.google : [],
+        gNewsBiz: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.gNewsBiz) ? rawData.gNewsBiz : [],
         signal: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.nate) ? rawData.signal : [],
-        namu: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.signal) ? rawData.namu : [],
+        gNewsLabor: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.gNewsLabor) ? rawData.gNewsLabor : [],
+        aha: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.aha) ? rawData.aha : [],
         fss: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fss) ? rawData.fss : [],
         policy: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.policy) ? rawData.policy : [],
         ppomppu: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.ppomppu) ? rawData.ppomppu : [],
-        instiz: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.instiz) ? rawData.instiz : [],
+        google: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.google) ? rawData.google : [],
         reddit: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.reddit) ? rawData.reddit : [],
         redditScams: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditScams) ? rawData.redditScams : [],
         redditPoverty: (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.redditPoverty) ? rawData.redditPoverty : [],
@@ -223,22 +234,15 @@ async function fetchTrends() {
     const date = new Date(data.timestamp);
     document.getElementById('last-update').textContent = date.toLocaleTimeString();
 
-    if ((APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.google) || (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.google)) {
-        renderList('google-list', data.google, (item) => `
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.gNewsBiz) {
+        renderList('google-list', data.gNewsBiz, (item) => `
           <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
             <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
-            ${item.image ? `<div class="thumbnail"><img src="${item.image}" alt="thumb"></div>` : ''}
             <div class="content">
               <div class="keyword">${item.keyword}</div>
               <div class="meta">
-                <span style="color:var(--google-color)">VOL: ${item.traffic}</span>
-                <div class="news-group">
-                  ${item.newsItems.map(news => `
-                    <a href="${news.url}" target="_blank" class="news-item">
-                      <span class="news-source">[${news.source}]</span>${news.title}
-                    </a>
-                  `).join('')}
-                </div>
+                <span style="color:var(--google-color)">> PUB: ${new Date(item.pubDate).toLocaleDateString()}</span><br>
+                <a href="${item.url}" target="_blank" class="news-item">기사보기</a>
               </div>
             </div>
           </div>
@@ -268,23 +272,19 @@ async function fetchTrends() {
         });
     }
 
-    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.signal) {
-        renderList('namu-list', data.namu, (item) => {
-          const isError = item.status === 'ERROR';
-          const colorStyle = isError ? 'color: #ff3333;' : '';
-          return `
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.gNewsLabor) {
+        renderList('gnews-labor-list', data.gNewsLabor, (item) => `
             <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
-              <div class="rank" style="${colorStyle}">${item.rank.toString().padStart(2, '0')}</div>
+              <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
               <div class="content">
-                <div class="keyword" style="${colorStyle}">${item.keyword}</div>
+                <div class="keyword">${item.keyword}</div>
                 <div class="meta">
-                  <span style="opacity:0.6">> STATUS: ${item.status}</span><br>
-                  ${item.summaryUrl ? `<a href="${item.summaryUrl}" target="_blank" class="summary-link">AI_SUMMARY</a>` : ''}
+                  <span style="color:#55ff55">> PUB: ${new Date(item.pubDate).toLocaleDateString()}</span><br>
+                  <a href="${item.url}" target="_blank" class="news-item">기사보기</a>
                 </div>
               </div>
             </div>
-          `;
-        });
+        `);
     }
 
     if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.fss) {
@@ -332,18 +332,40 @@ async function fetchTrends() {
         `);
     }
 
-    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.instiz) {
-        renderList('instiz-list', data.instiz, (item) => `
+    if (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.aha) {
+        renderList('aha-list', data.aha, (item) => `
             <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
               <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
               <div class="content">
                 <div class="keyword">${item.keyword}</div>
                 <div class="meta">
-                  <span style="color:var(--neon-color)">> VIRAL TREND</span><br>
+                  <span style="color:var(--neon-color)">> EXPERT Q&A</span><br>
                   <a href="${item.url}" target="_blank" class="news-item">바로가기</a>
                 </div>
               </div>
             </div>
+        `);
+    }
+
+    if (APP_CONFIG.region === 'US' && APP_CONFIG.sources.US.google) {
+        renderList('google-list', data.google, (item) => `
+          <div class="trend-item" style="animation-delay: ${item.rank * 50}ms">
+            <div class="rank">${item.rank.toString().padStart(2, '0')}</div>
+            ${item.image ? `<div class="thumbnail"><img src="${item.image}" alt="thumb"></div>` : ''}
+            <div class="content">
+              <div class="keyword">${item.keyword}</div>
+              <div class="meta">
+                <span style="color:var(--google-color)">VOL: ${item.traffic}</span>
+                <div class="news-group">
+                  ${item.newsItems.map(news => `
+                    <a href="${news.url}" target="_blank" class="news-item">
+                      <span class="news-source">[${news.source}]</span>${news.title}
+                    </a>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
         `);
     }
 
@@ -438,13 +460,13 @@ async function fetchTrends() {
     }
 
     const allKeywords = APP_CONFIG.region === 'KR' ? [
-      ...(data.google || []).map(i => i.keyword),
+      ...(data.gNewsBiz || []).map(i => i.keyword),
       ...(data.signal || []).map(i => i.keyword),
-      ...(data.namu || []).map(i => i.keyword),
+      ...(data.gNewsLabor || []).map(i => i.keyword),
       ...(data.fss || []).map(i => i.keyword),
       ...(data.policy || []).map(i => i.keyword),
       ...(data.ppomppu || []).map(i => i.keyword),
-      ...(data.instiz || []).map(i => i.keyword)
+      ...(data.aha || []).map(i => i.keyword)
     ] : [
       ...(data.google || []).map(i => i.keyword),
       ...(data.reddit || []).map(i => i.keyword),
@@ -998,9 +1020,20 @@ document.getElementById('cfg-topics').addEventListener('input', (e) => {
     document.getElementById('topics-val').textContent = `${e.target.value} TOPICS`;
 });
 
+document.getElementById('cfg-item-scale').addEventListener('input', (e) => {
+    updateItemScaleHint(parseFloat(e.target.value));
+});
+
 function updateIntervalHint(sec) {
     const min = (sec / 60).toFixed(1);
     document.getElementById('interval-hint').textContent = `≈ ${min} MIN`;
+}
+
+function updateItemScaleHint(scale) {
+    let label = '표준';
+    if (scale <= 0.5) label = '적게';
+    else if (scale >= 1.5) label = '많게';
+    document.getElementById('item-scale-val').textContent = `${label} (${scale.toFixed(1)}x)`;
 }
 
 // Initialization

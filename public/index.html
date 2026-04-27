@@ -28,9 +28,9 @@
     </header>
 
     <main class="grid">
-      <!-- Google Trends -->
+      <!-- Google News Biz -->
       <section class="panel google-panel">
-        <h2 class="panel-title">> GOOGLE_TRENDS_KR <span class="blink">_</span></h2>
+        <h2 class="panel-title">> GOOGLE_NEWS_BIZ <span class="blink">_</span></h2>
         <ul class="trend-list" id="google-list">
           <li class="loading">ESTABLISHING CONNECTION...</li>
         </ul>
@@ -44,11 +44,11 @@
         </ul>
       </section>
 
-      <!-- Namuwiki -->
+      <!-- Google News Labor -->
       <section class="panel namu-panel">
-        <h2 class="panel-title">> NAMUWIKI_LIVE <span class="blink">_</span></h2>
-        <ul class="trend-list" id="namu-list">
-          <li class="loading">BYPASSING FIREWALL...</li>
+        <h2 class="panel-title">> GOOGLE_NEWS_LABOR <span class="blink">_</span></h2>
+        <ul class="trend-list" id="gnews-labor-list">
+          <li class="loading">FETCHING RSS FEED...</li>
         </ul>
       </section>
 
@@ -76,10 +76,10 @@
         </ul>
       </section>
 
-      <!-- FMKorea Best -->
+      <!-- Aha Q&A -->
       <section class="panel instiz-panel">
-        <h2 class="panel-title">> INSTIZ_HOT <span class="blink">_</span></h2>
-        <ul class="trend-list" id="instiz-list">
+        <h2 class="panel-title">> AHA_QNA <span class="blink">_</span></h2>
+        <ul class="trend-list" id="aha-list">
           <li class="loading">ESTABLISHING CONNECTION...</li>
         </ul>
       </section>
@@ -180,13 +180,13 @@
                   <div class="setting-group">
                       <label>ACTIVE_DATA_SOURCES</label>
                       <div class="checkbox-group" id="src-group-kr">
-                          <label><input type="checkbox" id="src-google" checked> GOOGLE_TRENDS</label>
                           <label><input type="checkbox" id="src-nate" checked> NATE_TRENDS</label>
-                          <label><input type="checkbox" id="src-signal" checked> NAMUWIKI</label>
+                          <label><input type="checkbox" id="src-gnews-biz" checked> GOOGLE_NEWS_BIZ</label>
+                          <label><input type="checkbox" id="src-gnews-labor" checked> GOOGLE_NEWS_LABOR</label>
+                          <label><input type="checkbox" id="src-aha" checked> AHA_QNA</label>
                           <label><input type="checkbox" id="src-fss" checked> FSS_ALERTS</label>
                           <label><input type="checkbox" id="src-policy" checked> POLICY_BRIEFING</label>
                           <label><input type="checkbox" id="src-ppomppu" checked> PPOMPPU_INFO</label>
-                          <label><input type="checkbox" id="src-instiz" checked> INSTIZ_HOT</label>
                       </div>
                       <div class="checkbox-group hidden" id="src-group-us">
                           <label><input type="checkbox" id="src-google-us" checked> GOOGLE_TRENDS</label>
@@ -197,6 +197,11 @@
                           <label><input type="checkbox" id="src-yahoo" checked> YAHOO_NEWS</label>
                           <label><input type="checkbox" id="src-buzzfeed" checked> BUZZFEED_TRENDING</label>
                       </div>
+                  </div>
+                  <div class="setting-group">
+                      <label>SOURCE_ITEM_DENSITY</label>
+                      <input type="range" id="cfg-item-scale" min="0.5" max="1.5" step="0.5" value="1">
+                      <span id="item-scale-val">표준 (1.0x)</span>
                   </div>
                   <div class="setting-group">
                       <label>AI_ENGINE_FEATURES</label>

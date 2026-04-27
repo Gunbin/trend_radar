@@ -978,15 +978,54 @@ async function fetchWithRetry(name, fetchFn, retries = 2) {
   }
 }
 
-// 1. Google Trends (다국어 지원)
-async function getGoogleTrends(geo = 'KR') {
+const SOURCE_ITEM_COUNTS = {
+  signal: 10,
+  ppomppu: 7,
+  gNewsBiz: 7,
+  gNewsLabor: 7,
+  aha: 7,
+  fss: 5,
+  policy: 5,
+  google: 10,
+  reddit: 10,
+  redditScams: 10,
+  redditPoverty: 10,
+  redditFrugal: 10,
+  yahoo: 10,
+  buzzfeed: 10
+};
+
+const GOOGLE_NEWS_BIZ_URL = 'https://news.google.com/rss/search?q=(자영업자+OR+소상공인)+(지원금+OR+혜택+OR+주의점+OR+세금)+-주가+-특징주+-주식+when:7d&hl=ko&gl=KR&ceid=KR:ko';
+const GOOGLE_NEWS_LABOR_URL = 'https://news.google.com/rss/search?q=(근로기준법+OR+실업급여+OR+퇴직금)+(어떻게+OR+방법+OR+궁금증+OR+알아두면)+-주가+-특징주+-주식+when:7d&hl=ko&gl=KR&ceid=KR:ko';
+
+function clampItemScale(raw) {
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return 1.0;
+  return Math.min(1.5, Math.max(0.5, n));
+}
+
+function getSourceLimit(sourceName, itemScale = 1.0) {
+  const base = SOURCE_ITEM_COUNTS[sourceName] || 7;
+  return Math.max(1, Math.round(base * itemScale));
+}
+
+function formatMetricsLine(kw, data, lang = 'ko') {
+  const suggestions = (data.suggestions || []).join(', ') || (lang === 'en' ? 'none' : '없음');
+  if (lang === 'en') {
+    return `- keyword: ${kw} / searchVolume: ${data.searchVolume} / documentCount: ${data.documentCount} / competitionIndex: ${data.competitionIndex} / relatedQueries(reference): ${suggestions}`;
+  }
+  return `- 키워드: ${kw} / 월간검색량: ${data.searchVolume} / 발행문서수: ${data.documentCount} / 경쟁지수: ${data.competitionIndex} / 연관검색어(참고): ${suggestions}`;
+}
+
+// 1. Google Trends (US 전용)
+async function getGoogleTrends(geo = 'US', limit = 10) {
   return fetchWithRetry('Google Trends', async () => {
     const res = await axios.get(`https://trends.google.com/trending/rss?geo=${geo}`, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     });
     const parser = new xml2js.Parser();
     const result = await parser.parseStringPromise(res.data);
-    const items = result.rss.channel[0].item.slice(0, 10);
+    const items = (result.rss.channel[0].item || []).slice(0, limit);
     return items.map((item, i) => ({
       rank: i + 1,
       keyword: item.title[0],
@@ -1002,7 +1041,7 @@ async function getGoogleTrends(geo = 'KR') {
 }
 
 // 2. Nate (한국 전용)
-async function getSignalTrends() {
+async function getSignalTrends(limit = 10) {
   return fetchWithRetry('Nate Trends', async () => {
     const res = await axios.get('https://www.nate.com/js/data/jsonLiveKeywordDataV1.js?v=' + new Date().getTime(), {
       responseType: 'arraybuffer',
@@ -1013,7 +1052,7 @@ async function getSignalTrends() {
     const match = text.match(/\[\[.*\]\]/);
     if (match) {
         const data = JSON.parse(match[0]); 
-        return data.slice(0, 10).map((item, i) => ({
+        return data.slice(0, limit).map((item, i) => ({
             rank: i + 1, keyword: item[1],
             status: item[2] === 's' ? 'SAME' : (item[2] === '+' ? 'UP' : 'DOWN'),
             change: item[3]
@@ -1023,61 +1062,140 @@ async function getSignalTrends() {
   });
 }
 
-// 3. 나무위키 실시간 검색어 (한국 전용 - 아카라이브 실검알려주는채널 크롤링)
-async function getNamuwikiTrends() {
-  return fetchWithRetry('Namuwiki Trends', async () => {
-    const { body } = await gotScraping({
-        url: 'https://arca.live/b/namuhotnow',
-        headerGeneratorOptions: {
-            browsers: [
-                { name: 'chrome', minVersion: 110 },
-                { name: 'safari', minVersion: 15 },
-                { name: 'firefox', minVersion: 110 }
-            ],
-            devices: ['desktop', 'mobile'], 
-            locales: ['ko-KR', 'ko']
-        },
-        timeout: { request: 10000 }
+// 3. Google News (자영업/소상공인/세금)
+async function getGoogleNewsBiz(limit = 7) {
+  return fetchWithRetry('Google News Biz', async () => {
+    const res = await axios.get(GOOGLE_NEWS_BIZ_URL, {
+      timeout: 5000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     });
-    
-    const $ = cheerio.load(body);
-    const trends = [];
-    
-    $('.vrow').each((i, el) => {
-        if (trends.length >= 10) return false;
-        
-        // 공지사항 제외
-        if ($(el).hasClass('notice')) return true;
-        
-        const titleNode = $(el).find('.title');
-        let title = titleNode.text().trim();
-        let link = titleNode.attr('href') || '';
-        
-        if (link && !link.startsWith('http')) {
-            link = 'https://arca.live' + link;
-        }
-        
-        // 제목에서 댓글수 '[12]' 등 제거
-        title = title.replace(/\[\d+\]$/, '').trim();
-        
-        if (title) {
-            trends.push({
-                rank: trends.length + 1,
-                keyword: title,
-                status: 'NEW', // 아카라이브 게시판 특성상 상태(UP/DOWN)가 명확하지 않으므로 기본값
-                summaryUrl: link
-            });
-        }
-    });
-    
-    return trends;
+    const parser = new xml2js.Parser();
+    const result = await parser.parseStringPromise(res.data);
+    const items = result.rss?.channel?.[0]?.item || [];
+    if (items.length === 0) throw new Error('Google News Biz returned 0 items');
+
+    items.sort((a, b) => new Date(b.pubDate?.[0] || 0) - new Date(a.pubDate?.[0] || 0));
+
+    return items.slice(0, limit).map((item, i) => ({
+      rank: i + 1,
+      keyword: `[뉴스/경제] ${(item.title?.[0] || '').replace(/ - .+$/, '')}`,
+      url: item.link?.[0] || '',
+      pubDate: item.pubDate?.[0] || new Date().toISOString()
+    }));
   });
 }
 
-// 4. Reddit Trends (영미권 전용 - 인기 게시물 기반)
-async function getRedditTrends() {
+// 4. Google News (노동법/실업급여/퇴직금)
+async function getGoogleNewsLabor(limit = 7) {
+  return fetchWithRetry('Google News Labor', async () => {
+    const res = await axios.get(GOOGLE_NEWS_LABOR_URL, {
+      timeout: 5000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+    });
+    const parser = new xml2js.Parser();
+    const result = await parser.parseStringPromise(res.data);
+    const items = result.rss?.channel?.[0]?.item || [];
+    if (items.length === 0) throw new Error('Google News Labor returned 0 items');
+
+    items.sort((a, b) => new Date(b.pubDate?.[0] || 0) - new Date(a.pubDate?.[0] || 0));
+
+    return items.slice(0, limit).map((item, i) => ({
+      rank: i + 1,
+      keyword: `[뉴스/노동] ${(item.title?.[0] || '').replace(/ - .+$/, '')}`,
+      url: item.link?.[0] || '',
+      pubDate: item.pubDate?.[0] || new Date().toISOString()
+    }));
+  });
+}
+
+// 5. Aha 전문가 Q&A
+async function getAhaTrends(limit = 7) {
+  return fetchWithRetry('Aha Q&A', async () => {
+    const { body } = await gotScraping({
+      url: 'https://www.a-ha.io/questions',
+      headerGeneratorOptions: {
+        browsers: [{ name: 'chrome', minVersion: 110 }],
+        devices: ['desktop'],
+        locales: ['ko-KR']
+      },
+      timeout: { request: 10000 }
+    });
+
+    const $ = cheerio.load(body);
+    const seen = new Set();
+    const questions = [];
+
+    $('a[href^="/questions/"]').each((_, el) => {
+      if (questions.length >= limit) return false;
+
+      const title = $(el).find('h3, .title, .q-title').first().text().trim() || $(el).text().trim();
+      let link = $(el).attr('href') || '';
+      if (link && !link.startsWith('http')) link = `https://www.a-ha.io${link}`;
+      const key = `${title}|${link}`;
+
+      if (title && title.length > 5 && !seen.has(key)) {
+        seen.add(key);
+        questions.push({
+          rank: questions.length + 1,
+          keyword: `[Aha 질문] ${title}`,
+          url: link
+        });
+      }
+    });
+
+    if (questions.length > 0) return questions;
+
+    // Fallback: /questions 가 /topic 으로 리다이렉트되는 경우 sitemap 기반으로 최신 질문 URL을 수집
+    const sitemapRes = await axios.get('https://www.a-ha.io/sitemapindex1.xml', {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+    });
+    const parser = new xml2js.Parser();
+    const sitemap = await parser.parseStringPromise(sitemapRes.data);
+    const locs = (sitemap.urlset?.url || [])
+      .map((u) => u.loc?.[0])
+      .filter((u) => typeof u === 'string' && u.includes('/questions/'))
+      .slice(0, limit * 3); // 일부 URL 실패를 고려해 여유 샘플 확보
+
+    const fallback = [];
+    for (const url of locs) {
+      if (fallback.length >= limit) break;
+      try {
+        const qRes = await axios.get(url, {
+          timeout: 8000,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+        const q$ = cheerio.load(qRes.data);
+        const title =
+          q$('meta[property="og:title"]').attr('content') ||
+          q$('meta[name="twitter:title"]').attr('content') ||
+          q$('title').text().trim();
+        if (!title) continue;
+
+        const cleanTitle = title
+          .replace(/\s*\|\s*a-ha.*$/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!cleanTitle || seen.has(`${cleanTitle}|${url}`)) continue;
+        seen.add(`${cleanTitle}|${url}`);
+        fallback.push({
+          rank: fallback.length + 1,
+          keyword: `[Aha 질문] ${cleanTitle}`,
+          url
+        });
+      } catch (_e) {
+        // 개별 질문 페이지 실패는 건너뛰고 계속 수집
+      }
+    }
+
+    return fallback;
+  });
+}
+
+// 6. Reddit Trends (영미권 전용 - 인기 게시물 기반)
+async function getRedditTrends(limit = 10) {
   return fetchWithRetry('Reddit Trends', async () => {
-    const res = await axios.get('https://www.reddit.com/r/popular/top.json?limit=10', {
+    const res = await axios.get(`https://www.reddit.com/r/popular/top.json?limit=${limit}`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     });
     return res.data.data.children.map((child, i) => ({
@@ -1090,10 +1208,10 @@ async function getRedditTrends() {
   });
 }
 
-// 4-1. Reddit Scams (영미권 전용 - Loss Aversion)
-async function getRedditScams() {
+// 6-1. Reddit Scams (영미권 전용 - Loss Aversion)
+async function getRedditScams(limit = 10) {
   return fetchWithRetry('Reddit Scams', async () => {
-    const res = await axios.get('https://www.reddit.com/r/Scams/top.json?limit=10&t=day', {
+    const res = await axios.get(`https://www.reddit.com/r/Scams/top.json?limit=${limit}&t=day`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/1.0' },
       timeout: 5000
     });
@@ -1107,10 +1225,10 @@ async function getRedditScams() {
   });
 }
 
-// 4-2. Reddit Poverty Finance (영미권 전용 - Welfare)
-async function getRedditPoverty() {
+// 6-2. Reddit Poverty Finance (영미권 전용 - Welfare)
+async function getRedditPoverty(limit = 10) {
   return fetchWithRetry('Reddit PovertyFinance', async () => {
-    const res = await axios.get('https://www.reddit.com/r/povertyfinance/top.json?limit=10&t=day', {
+    const res = await axios.get(`https://www.reddit.com/r/povertyfinance/top.json?limit=${limit}&t=day`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/1.0' },
       timeout: 5000
     });
@@ -1124,11 +1242,10 @@ async function getRedditPoverty() {
   });
 }
 
-// 4-3. Reddit Frugal & LifeProTips (영미권 전용 - Smart Consumer)
-async function getRedditFrugal() {
+// 6-3. Reddit Frugal & LifeProTips (영미권 전용 - Smart Consumer)
+async function getRedditFrugal(limit = 10) {
   return fetchWithRetry('Reddit Frugal', async () => {
-    // Fetch both and interleave or just Frugal? Let's use Frugal for simplicity and impact
-    const res = await axios.get('https://www.reddit.com/r/Frugal/top.json?limit=10&t=day', {
+    const res = await axios.get(`https://www.reddit.com/r/Frugal/top.json?limit=${limit}&t=day`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/1.0' },
       timeout: 5000
     });
@@ -1142,8 +1259,8 @@ async function getRedditFrugal() {
   });
 }
 
-// 4-4. BuzzFeed Trending (영미권 전용 - Viral & Entertainment)
-async function getBuzzFeedTrending() {
+// 6-4. BuzzFeed Trending (영미권 전용 - Viral & Entertainment)
+async function getBuzzFeedTrending(limit = 10) {
   return fetchWithRetry('BuzzFeed Trending', async () => {
     const res = await axios.get('https://www.buzzfeed.com/trending.xml', {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -1151,7 +1268,7 @@ async function getBuzzFeedTrending() {
     });
     const parser = new xml2js.Parser();
     const result = await parser.parseStringPromise(res.data);
-    const items = result.rss.channel[0].item.slice(0, 10);
+    const items = (result.rss.channel[0].item || []).slice(0, limit);
     return items.map((item, i) => ({
       rank: i + 1,
       keyword: item.title[0],
@@ -1161,8 +1278,8 @@ async function getBuzzFeedTrending() {
   });
 }
 
-// 5. Yahoo News (영미권 전용 - RSS)
-async function getYahooNewsRSS() {
+// 7. Yahoo News (영미권 전용 - RSS)
+async function getYahooNewsRSS(limit = 10) {
   return fetchWithRetry('Yahoo News', async () => {
     const res = await axios.get('https://news.yahoo.com/rss/', {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -1170,7 +1287,7 @@ async function getYahooNewsRSS() {
     });
     const parser = new xml2js.Parser();
     const result = await parser.parseStringPromise(res.data);
-    const items = result.rss.channel[0].item.slice(0, 10);
+    const items = (result.rss.channel[0].item || []).slice(0, limit);
     return items.map((item, i) => ({
       rank: i + 1,
       keyword: item.title[0],
@@ -1180,8 +1297,8 @@ async function getYahooNewsRSS() {
   });
 }
 
-// 6. 금융감독원 소비자경보 (한국 전용 - RSS 대신 HTML 스크래핑)
-async function getFssAlerts() {
+// 8. 금융감독원 소비자경보 (한국 전용 - RSS 대신 HTML 스크래핑)
+async function getFssAlerts(limit = 5) {
   return fetchWithRetry('FSS Alerts', async () => {
     const res = await axios.get('https://www.fss.or.kr/fss/bbs/B0000188/list.do?menuNo=200213', {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -1190,7 +1307,7 @@ async function getFssAlerts() {
     const $ = cheerio.load(res.data);
     const alerts = [];
     $('.bd-list .title a').each((i, el) => {
-        if (alerts.length >= 10) return false;
+        if (alerts.length >= limit) return false;
         const title = $(el).text().trim();
         let link = $(el).attr('href') || '';
         if (link.startsWith('?')) {
@@ -1212,8 +1329,8 @@ async function getFssAlerts() {
   });
 }
 
-// 7. 정책브리핑 (한국 전용 - RSS)
-async function getPolicyBriefing() {
+// 9. 정책브리핑 (한국 전용 - RSS)
+async function getPolicyBriefing(limit = 5) {
   return fetchWithRetry('Policy Briefing', async () => {
     // https 연결 리셋(ECONNRESET) 방지를 위해 http 사용
     const res = await axios.get('http://www.korea.kr/rss/policy.xml', {
@@ -1222,7 +1339,7 @@ async function getPolicyBriefing() {
     });
     const parser = new xml2js.Parser();
     const result = await parser.parseStringPromise(res.data);
-    const items = result.rss.channel[0].item.slice(0, 10);
+    const items = (result.rss.channel[0].item || []).slice(0, limit);
     return items.map((item, i) => ({
       rank: i + 1,
       keyword: item.title[0],
@@ -1232,8 +1349,8 @@ async function getPolicyBriefing() {
   });
 }
 
-// 8. 뽐뿌 정보/강좌 게시판 (한국 전용 - 핫딜 대신 정보성 글 크롤링)
-async function getPpomppuHotDeals() {
+// 10. 뽐뿌 정보/강좌 게시판 (한국 전용 - 핫딜 대신 정보성 글 크롤링)
+async function getPpomppuHotDeals(limit = 7) {
   return fetchWithRetry('Ppomppu Info', async () => {
     const res = await axios.get('https://www.ppomppu.co.kr/zboard/zboard.php?id=etc_info', {
         responseType: 'arraybuffer',
@@ -1246,7 +1363,7 @@ async function getPpomppuHotDeals() {
     
     // 정보게시판(etc_info)의 게시글 목록 추출
     $('.baseList-title').each((i, el) => {
-        if (deals.length >= 10) return false;
+        if (deals.length >= limit) return false;
         
         const title = $(el).text().replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim();
         let link = $(el).attr('href') || '';
@@ -1271,58 +1388,6 @@ async function getPpomppuHotDeals() {
     });
     
     return deals;
-  });
-}
-
-// 9. 바이럴 커뮤니티 베스트 (한국 전용 - 인스티즈 핫게시판 크롤링, 펨코 우회)
-async function getInstizHot() {
-  return fetchWithRetry('Instiz Hot', async () => {
-    // 1. got-scraping을 사용하여 브라우저 지문 위장
-    const { body } = await gotScraping({
-        url: 'https://www.instiz.net/hot.htm?sid=pt',
-        headerGeneratorOptions: {
-            browsers: [
-                { name: 'chrome', minVersion: 110 },
-                { name: 'safari', minVersion: 15 },
-                { name: 'firefox', minVersion: 110 }
-            ],
-            devices: ['desktop', 'mobile'], 
-            locales: ['ko-KR', 'ko']
-        },
-        headers: { 
-            'Referer': 'https://www.google.com/search?q=%EC%9D%B8%EC%8A%A4%ED%8B%B0%EC%A6%88',
-        },
-        timeout: {
-            request: 10000
-        }
-    });
-    const $ = cheerio.load(body);
-    const bests = [];
-
-    // 인스티즈 리스트 라인 추출
-    $('.result_search a, .realchart_item_a').each((i, el) => {
-        if (bests.length >= 10) return false;
-        
-        let link = $(el).attr('href') || '';
-        if (link.startsWith('/')) link = 'https://www.instiz.net' + link;
-        
-        // title은 자식 요소인 h3.search_title에 있거나 (result_search), 그냥 text()에 있음 (realchart_item_a)
-        let titleNode = $(el).find('.search_title');
-        let title = titleNode.length ? titleNode.text() : $(el).text();
-        
-        title = title.replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim(); // 댓글수 제거 및 연속 공백 제거
-        
-        // 글 제목 필터링
-        if (title && !title.includes('공지') && !link.includes('memo')) {
-            bests.push({
-                rank: bests.length + 1,
-                keyword: `[인스티즈] ${title}`,
-                url: link
-            });
-        }
-    });
-    
-    return bests;
   });
 }
 
@@ -1384,18 +1449,28 @@ app.get('/api/config/prompts', (req, res) => {
 app.get('/api/trends', async (req, res) => {
   const region = req.query.region || 'KR';
   const sources = req.query.sources ? req.query.sources.split(',') : [];
+  const itemScale = clampItemScale(req.query.itemScale);
 
   const checkSource = (name) => sources.length === 0 || sources.includes(name);
 
   if (region === 'US') {
+    const usLimits = {
+      google: getSourceLimit('google', itemScale),
+      reddit: getSourceLimit('reddit', itemScale),
+      yahoo: getSourceLimit('yahoo', itemScale),
+      redditScams: getSourceLimit('redditScams', itemScale),
+      redditPoverty: getSourceLimit('redditPoverty', itemScale),
+      redditFrugal: getSourceLimit('redditFrugal', itemScale),
+      buzzfeed: getSourceLimit('buzzfeed', itemScale)
+    };
     const [google, reddit, yahoo, redditScams, redditPoverty, redditFrugal, buzzfeed] = await Promise.all([
-      checkSource('google') ? getGoogleTrends('US') : Promise.resolve([]),
-      checkSource('reddit') ? getRedditTrends() : Promise.resolve([]),
-      checkSource('yahoo') ? getYahooNewsRSS() : Promise.resolve([]),
-      checkSource('redditScams') ? getRedditScams() : Promise.resolve([]),
-      checkSource('redditPoverty') ? getRedditPoverty() : Promise.resolve([]),
-      checkSource('redditFrugal') ? getRedditFrugal() : Promise.resolve([]),
-      checkSource('buzzfeed') ? getBuzzFeedTrending() : Promise.resolve([])
+      checkSource('google') ? getGoogleTrends('US', usLimits.google) : Promise.resolve([]),
+      checkSource('reddit') ? getRedditTrends(usLimits.reddit) : Promise.resolve([]),
+      checkSource('yahoo') ? getYahooNewsRSS(usLimits.yahoo) : Promise.resolve([]),
+      checkSource('redditScams') ? getRedditScams(usLimits.redditScams) : Promise.resolve([]),
+      checkSource('redditPoverty') ? getRedditPoverty(usLimits.redditPoverty) : Promise.resolve([]),
+      checkSource('redditFrugal') ? getRedditFrugal(usLimits.redditFrugal) : Promise.resolve([]),
+      checkSource('buzzfeed') ? getBuzzFeedTrending(usLimits.buzzfeed) : Promise.resolve([])
     ]);
     res.json({
         timestamp: new Date().toISOString(),
@@ -1412,27 +1487,36 @@ app.get('/api/trends', async (req, res) => {
         }
     });
     } else {
-    const [google, signal, namu, fss, policy, ppomppu, instiz] = await Promise.all([
-      checkSource('google') ? getGoogleTrends('KR') : Promise.resolve([]),
-      checkSource('signal') ? getSignalTrends() : Promise.resolve([]),
-      checkSource('namu') ? getNamuwikiTrends() : Promise.resolve([]),
-      checkSource('fss') ? getFssAlerts() : Promise.resolve([]),
-      checkSource('policy') ? getPolicyBriefing() : Promise.resolve([]),
-      checkSource('ppomppu') ? getPpomppuHotDeals() : Promise.resolve([]),
-      checkSource('instiz') ? getInstizHot() : Promise.resolve([])
+    const krLimits = {
+      signal: getSourceLimit('signal', itemScale),
+      gNewsBiz: getSourceLimit('gNewsBiz', itemScale),
+      gNewsLabor: getSourceLimit('gNewsLabor', itemScale),
+      aha: getSourceLimit('aha', itemScale),
+      fss: getSourceLimit('fss', itemScale),
+      policy: getSourceLimit('policy', itemScale),
+      ppomppu: getSourceLimit('ppomppu', itemScale)
+    };
+    const [signal, gNewsBiz, gNewsLabor, aha, fss, policy, ppomppu] = await Promise.all([
+      checkSource('signal') ? getSignalTrends(krLimits.signal) : Promise.resolve([]),
+      checkSource('gNewsBiz') ? getGoogleNewsBiz(krLimits.gNewsBiz) : Promise.resolve([]),
+      checkSource('gNewsLabor') ? getGoogleNewsLabor(krLimits.gNewsLabor) : Promise.resolve([]),
+      checkSource('aha') ? getAhaTrends(krLimits.aha) : Promise.resolve([]),
+      checkSource('fss') ? getFssAlerts(krLimits.fss) : Promise.resolve([]),
+      checkSource('policy') ? getPolicyBriefing(krLimits.policy) : Promise.resolve([]),
+      checkSource('ppomppu') ? getPpomppuHotDeals(krLimits.ppomppu) : Promise.resolve([])
     ]);
     res.json({
         timestamp: new Date().toISOString(),
         region,
-        google, signal, namu, fss, policy, ppomppu, instiz,
+        signal, gNewsBiz, gNewsLabor, aha, fss, policy, ppomppu,
         sourceDescriptions: {
-            google: "구글 트렌드 (한국). 하루 동안 한국 전체를 뒤흔든 대형 사건사고, 정치, 사회, IT 등 대중적인 거시적 트렌드.",
-            signal: "네이트 실시간 검색어. 포털 사이트 특성상 연예, 가십, 방송 프로그램, 사건사고 키워드가 주를 이룸.",
-            namu: "나무위키 실시간 검색어 (아카라이브 기반). 인물 논란, 특정 커뮤니티 밈(Meme), 서브컬처, 인터넷 방송인(유튜버) 등 파급력이 강하고 깊이 있는 정보 탐색이 동반되는 키워드.",
+            signal: "네이트 실시간 검색어. 포털 기반의 시의성 신호를 빠르게 반영.",
+            gNewsBiz: "구글 뉴스 (자영업/세금). 소상공인 지원금, 세금 관련 최신 뉴스.",
+            gNewsLabor: "구글 뉴스 (노동법/실업급여). 직장인 권리 및 실업급여 관련 팩트.",
+            aha: "Aha(아하) 전문가 Q&A. 사용자의 구체적이고 현실적인 질문과 전문가 답변.",
             fss: "금융감독원 소비자경보. 신종 보이스피싱, 코인 사기 수법, 불법 사금융 등 독자의 금전적 손실(Loss Aversion)을 방지하기 위한 경고성 정보.",
             policy: "대한민국 정책브리핑. 정부 보조금, 청년 지원금, 세금 환급 등 독자의 금전적 이득과 실생활에 직결되는 정책 정보(Welfare).",
-            ppomppu: "뽐뿌 정보/강좌 게시판. 재테크, 핫딜, 가성비에 매우 민감한 스마트 컨슈머들이 공유하는 생활 밀착형 꿀팁 및 유용한 정보.",
-            instiz: "인스티즈 핫(HOT) 게시판. 10~20대 여성 중심 커뮤니티의 실시간 바이럴 이슈, 유머, 연예인, 가벼운 일상 해프닝."
+            ppomppu: "뽐뿌 정보/강좌 게시판. 재테크, 핫딜, 가성비에 매우 민감한 스마트 컨슈머들이 공유하는 생활 밀착형 꿀팁 및 유용한 정보."
         }
     });
     }
@@ -1446,7 +1530,7 @@ function generateSearchAdSignature(method, uri, secretKey, apiKey) {
     return { timestamp, hash };
 }
 
-async function getNaverKeywordMetrics(keywords) {
+async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
     if (!process.env.SEARCHAD_ACCESS_LICENSE || !process.env.SEARCHAD_SECRET_KEY || !process.env.SEARCHAD_CUSTOMER_ID) {
         logger.warn('[Metrics] Naver SearchAd API keys missing. Skipping metrics.');
         return {};
@@ -1537,7 +1621,31 @@ async function getNaverKeywordMetrics(keywords) {
         }
     }
 
+    const topKeywords = keywords.slice(0, 5);
+    const suggestionsMap = {};
+    await Promise.all(
+      topKeywords.map(async (kw) => {
+        suggestionsMap[kw] = await getGoogleSuggestions(kw, lang, country);
+      })
+    );
+
+    Object.keys(originalMetrics).forEach((kw) => {
+      originalMetrics[kw].suggestions = suggestionsMap[kw] || [];
+    });
+
     return originalMetrics;
+}
+
+async function getGoogleSuggestions(keyword, lang = 'ko', country = 'KR') {
+  try {
+    const res = await axios.get('http://suggestqueries.google.com/complete/search', {
+      params: { client: 'chrome', q: keyword, hl: lang, gl: country },
+      timeout: 3000
+    });
+    return Array.isArray(res.data?.[1]) ? res.data[1].slice(0, 5) : [];
+  } catch (_e) {
+    return [];
+  }
 }
 
 // [Step 1] Lite 모델을 이용한 검색 키워드 추출
@@ -1593,9 +1701,11 @@ app.post('/api/analyze', async (req, res) => {
       // 영미권도 일단은 네이버 API를 사용하도록 작업 (추후 분리 용이하게)
       const searchTerms = await extractSearchKeywords(manualText ? { text: manualText } : trends, lang);
       if (searchTerms.length > 0) {
-          const metrics = await getNaverKeywordMetrics(searchTerms);
+          const suggestLang = region === 'US' ? 'en' : 'ko';
+          const suggestCountry = region === 'US' ? 'US' : 'KR';
+          const metrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
           metricsContext = Object.entries(metrics).map(([kw, data]) => 
-              `- 키워드: ${kw} / 월간검색량: ${data.searchVolume} / 발행문서수: ${data.documentCount} / 경쟁지수: ${data.competitionIndex}`
+              formatMetricsLine(kw, data, lang)
           ).join('\n');
           logger.success(`[Analysis] Successfully gathered metrics for ${searchTerms.length} terms.`);
       }
@@ -1657,12 +1767,14 @@ app.post('/api/analyze', async (req, res) => {
         if (manualText) {
             prompt = promptManager.getPrompt('manual_analysis', lang, {
               manual_text: manualText,
-              topic_count: topicCount
+              topic_count: topicCount,
+              metrics_data: metricsContext
             });
         } else {
             prompt = promptManager.getPrompt('trend_analysis', lang, {
               trends_data: JSON.stringify(trends),
-              topic_count: topicCount
+              topic_count: topicCount,
+              metrics_data: metricsContext
             });
         }
         // [v2.4] 카니발 방지: 최근 30일 발행 키워드를 negative context로 주입

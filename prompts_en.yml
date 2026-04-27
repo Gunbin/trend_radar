@@ -55,7 +55,7 @@ _shared:
             - Step flows, A vs B, state changes (Apply → Review → Approve), timelines
             - TOC-style overview, ratios with **real** numbers (see [T1] — no invented figures)
 
-            → Write a fenced code block. Types: **flowchart** (use `flowchart LR` where it fits), timeline, pie (real numbers only), journey, sequenceDiagram, stateDiagram-v2, gantt, Markmap (language tag: `markmap`).
+            → Write a fenced code block. Types: **flowchart LR**, timeline, pie (real numbers only), journey, sequenceDiagram, stateDiagram-v2, gantt, Markmap (language tag: `markmap`).
 
             → If you use Mermaid/Markmap for a slot, **do not** also put `IMAGE_PLACEHOLDER_N` in that same slot (the code block *is* the slot). Use `IMAGE_PLACEHOLDER_N` only for true image slots.
 
@@ -194,6 +194,7 @@ tasks:
       {{trends_data}}
 
       {{metrics_data}}
+      Note: `relatedQueries(reference)` in metrics_data are auxiliary hints for reader language/search context, not primary topic selectors. Use them selectively with painScore and queryConfidence.
 
       Based on the data above, respond with the following JSON structure (Create {{topic_count}} plans):
       {
@@ -293,6 +294,10 @@ tasks:
     template: |
       [User Input Text]
       {{manual_text}}
+
+      [Real-time Naver Search Metrics]
+      {{metrics_data}}
+      Note: `relatedQueries(reference)` in metrics_data are auxiliary hints for reader language/search context, not primary topic selectors. Use them selectively with painScore and queryConfidence.
 
       Based on the text above, respond with the following JSON structure (Create {{topic_count}} plans):
       {

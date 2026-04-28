@@ -139,6 +139,9 @@ _shared:
         - impact (1-5): monetary/time/safety/relationship damage magnitude
         - Output a single integer = severity + urgency + impact (range 3-15)
         - Interpretation: ≥9 main high-priority plan / 6-8 support plan / ≤5 sharpen the plan before output
+        - Internally validate the score rationale: cross-check "why this score" against searchVolume/competitionIndex/documentCount.
+          If your score conflicts with hard metrics (e.g., searchVolume is 0), lower the score before output.
+        - Note: final priority is re-evaluated server-side with numeric SEO viability scoring, so do not inflate painScore with purely narrative appeal.
     serp_differentiation: |
       ■ SERP Differentiation (serpDifferentiation) — mandatory 2-step reasoning
         [Step 1] Infer what current top-ranking posts for the mainKeyword commonly cover.
@@ -171,6 +174,9 @@ tasks:
       Analyze the provided trend data and extract 8–10 noun-based search keywords (Search Terms) best suited for querying Naver to get search volume and document counts.
       - Keywords must be in English.
       - Keywords should be specific enough for keyword tools (e.g., instead of "Apple", use "Apple Watch Battery Replacement").
+      - [Important] Search volume lookup treats whitespace-insensitive variants as the same keyword (e.g., "real estate direct deal" vs "realestatedirectdeal").
+      - Therefore, keep keywords in a natural spaced form, but **NEVER output a single-token head term** (e.g., "Seoul", "Real estate") by itself.
+      - Each keyword must combine **2+ meaningful units** (compound noun / specific intent phrase). Examples: "Real estate direct deal contract checklist", "Illegal private loan 신고 방법", "Seoul public kids cafe reservation tips".
       - Output ONLY a JSON array of strings. Do not use markdown code blocks.
     template: |
       [Input Trend Data]

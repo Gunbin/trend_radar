@@ -139,7 +139,52 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     required: ["blogPosts"]
 };
 
-// [v2.7] 기획안 품질 분류 — painScore + queryConfidence + competitionIndex 조합으로 _meta.priority 태깅
+// [v3.0] 검색 생존 점수: 측정 가능한 수치(searchVolume/competitionIndex/documentCount)만 사용
+// 캘리브레이션 결과:
+// - searchVolume=0 하드 게이트(유입 불가) 유지
+// - known-good(예: 낮은 competitionIndex + 높은 searchVolume) 구조를 과도하게 강등하지 않도록 보정
+function calcSeoViabilityScore(searchVolume, competitionIndex, documentCount) {
+    const sv = typeof searchVolume === 'number' ? searchVolume : 0;
+    const dc = typeof documentCount === 'number' ? documentCount : 0;
+    const ci = typeof competitionIndex === 'number' ? competitionIndex : null;
+
+    // Hard gate: 유입 0이면 어떤 경우에도 생존점수 0
+    if (!sv || sv <= 0) return 0;
+
+    let score = 0;
+
+    // 수요(demand) 가중치 (max ~6)
+    if (sv >= 300000) score += 6;
+    else if (sv >= 100000) score += 5;
+    else if (sv >= 50000) score += 4;
+    else if (sv >= 10000) score += 3;
+    else if (sv >= 1000) score += 2;
+    else score += 1;
+
+    // 경쟁 강도 절대값(문서수) (max ~5)
+    if (dc < 3000) score += 5;
+    else if (dc < 10000) score += 4;
+    else if (dc < 50000) score += 3;
+    else if (dc < 200000) score += 2;
+    else if (dc < 600000) score += 1;
+
+    // 비율(competitionIndex)은 보조로만(보너스/패널티)
+    if (ci !== null) {
+        if (ci < 0.2 && sv >= 50000) score += 2;         // rescue (known-good 패턴)
+        else if (ci < 0.35) score += 1.5;
+        else if (ci < 0.7) score += 1;
+        else if (ci < 1.5) score += 0.5;
+        else if (ci >= 20) score -= 2;
+        else if (ci >= 10) score -= 1;
+
+        // [v3.1] 저볼륨인데 고경쟁(비율 과열)인 경우 추가 패널티 (저볼륨+고경쟁 secondary 누수 방지)
+        if (sv < 2000 && ci > 3.0) score -= 2;
+    }
+
+    return Math.max(0, score);
+}
+
+// [v2.9] 기획안 품질 분류 — 하드게이트 + seoViabilityScore 기반 태깅
 function annotateAnalysisPriority(analysisResult) {
     if (!analysisResult || !Array.isArray(analysisResult.blogPosts)) return analysisResult;
     const COMPETITION_HARD_LIMIT = 3.0;
@@ -148,41 +193,59 @@ function annotateAnalysisPriority(analysisResult) {
         const painScore = Number.isInteger(post.painScore) ? post.painScore : null;
         const confidence = typeof post.queryConfidence === 'string' ? post.queryConfidence : null;
         const compIdx = typeof post.competitionIndex === 'number' ? post.competitionIndex : null;
+        const searchVolume = typeof post.searchVolume === 'number' ? post.searchVolume : null;
+        const documentCount = typeof post.documentCount === 'number' ? post.documentCount : null;
+        const sv = (typeof searchVolume === 'number') ? searchVolume : 0;
+        const seoViabilityScore = calcSeoViabilityScore(sv, compIdx, documentCount);
 
         let priority = 'review'; // 기본값
         let reason = '';
 
-        if (painScore === null && confidence === null) {
+        // [Gate 1] 검색량 0이면 유입 불가 키워드로 즉시 review
+        if (sv === 0) {
+            priority = 'review';
+            reason = '⚠️ 검색량 0 — 실제 유입 불가 키워드';
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — searchVolume=0 review 강등`);
+        } else if (painScore === null && confidence === null) {
             priority = 'review';
             reason = 'painScore/queryConfidence 누락';
         } else if (confidence === 'Low') {
             priority = 'review';
             reason = 'queryConfidence=Low';
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — queryConfidence=Low`);
+        } else if (seoViabilityScore >= 8 && (confidence === 'High' || confidence === 'Medium' || confidence === null)) {
+            priority = 'primary';
+            reason = `✅ SEO 생존 점수 우수 (seoViabilityScore ${seoViabilityScore})`;
         } else if (compIdx !== null && compIdx > COMPETITION_HARD_LIMIT) {
+            if (seoViabilityScore < 5) {
+                priority = 'review';
+                reason = `⚠️ 경쟁률 과열 + 생존점수 낮음 (competitionIndex ${compIdx}, seoViabilityScore ${seoViabilityScore})`;
+            } else {
+                priority = 'secondary';
+                reason = `⚠️ 경쟁률 과열 (competitionIndex ${compIdx} > ${COMPETITION_HARD_LIMIT})`;
+            }
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — 경쟁률 과열로 ${priority} 분류`);
+        } else if (seoViabilityScore >= 5) {
             priority = 'secondary';
-            reason = `⚠️ 경쟁률 과열 (competitionIndex ${compIdx} > ${COMPETITION_HARD_LIMIT})`;
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — 경쟁률 과열로 secondary 강등`);
-        } else if (compIdx !== null && compIdx < 0.5 && (painScore ?? 0) >= 8) {
-            priority = 'primary';
-            reason = `💎 블루오션 발견 (경쟁률 ${compIdx} < 0.5)`;
-        } else if ((painScore ?? 0) >= 9 && confidence === 'High' && (compIdx === null || compIdx <= COMPETITION_HARD_LIMIT)) {
-            priority = 'primary';
-            reason = '🔥 수요 높음 (painScore 9+ & High, 경쟁률 허용 범위)';
-        } else if ((painScore ?? 0) >= 6 && confidence !== 'Low') {
-            priority = 'secondary';
-            reason = '평이한 수준';
+            reason = `ℹ️ SEO 생존 점수 보통 (seoViabilityScore ${seoViabilityScore})`;
         } else if ((painScore ?? 0) < 6) {
             priority = 'review';
             reason = `painScore=${painScore} — 페인 약함`;
+        } else {
+            priority = 'review';
+            reason = `seoViabilityScore=${seoViabilityScore} — 유입 잠재력 낮음`;
         }
 
         post._meta = {
             priority,
             reason,
             painScore,
+            modelPainScore: painScore,
+            seoViabilityScore,
             queryConfidence: confidence,
-            competitionIndex: compIdx
+            competitionIndex: compIdx,
+            searchVolume,
+            documentCount
         };
     }
 
@@ -1547,9 +1610,35 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
     
     // 1. 월간 검색량 (SearchAd API)
     // 한 번에 최대 5개 키워드 조회 가능
+    // [v3.2] 공백 포함 키워드가 SearchAd에서 0으로 떨어지는 문제를 완화하기 위해
+    //        토큰 분리(노이즈 제외) 확장 조회 후, 원본 키워드에 최대 searchVolume을 역매핑한다.
+    const NOISE_TOKENS = new Set([
+        '방법', '신청', '이용', '안내', '정보', '확인', '조회', '방식', '절차',
+        '가이드', '정리', '후기', '추천', '가격', '조건', '대상', '기간'
+    ]);
+
+    function expandKeywordsForMetrics(inputKeywords) {
+        const expanded = new Set();
+        for (const kw of inputKeywords) {
+            const raw = String(kw ?? '').trim();
+            if (!raw) continue;
+            expanded.add(raw);
+            const parts = raw
+                .split(/\s+/)
+                .map(p => p.trim())
+                .filter(p => p.length >= 3)
+                .filter(p => !NOISE_TOKENS.has(p));
+            if (parts.length > 1) {
+                parts.forEach(p => expanded.add(p));
+            }
+        }
+        return [...expanded];
+    }
+
+    const expandedKeywords = expandKeywordsForMetrics(keywords);
     const kChunks = [];
-    for (let i = 0; i < keywords.length; i += 5) {
-        kChunks.push(keywords.slice(i, i + 5));
+    for (let i = 0; i < expandedKeywords.length; i += 5) {
+        kChunks.push(expandedKeywords.slice(i, i + 5));
     }
 
     const metrics = {};
@@ -1557,6 +1646,8 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
     for (const chunk of kChunks) {
         try {
             // [Fix] 네이버 검색광고 API는 키워드 내 공백(띄어쓰기)을 절대 허용하지 않음 (Invalid Parameter 오류 방지)
+            //       단, 공백 포함 원본 키워드는 토큰으로 분리(expandKeywordsForMetrics)해두었으므로
+            //       여기서는 "공백 제거"를 파라미터 안전장치로만 적용한다.
             const sanitizedChunk = chunk.map(k => String(k).replace(/\s+/g, '').trim()).filter(Boolean);
             if (sanitizedChunk.length === 0) continue;
 
@@ -1600,7 +1691,7 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
         if (foundKey && metrics[foundKey]) {
              originalMetrics[targetKw] = { ...metrics[foundKey] };
         } else {
-             originalMetrics[targetKw] = { searchVolume: 1, pcVolume: 0, mobileVolume: 0 };
+             originalMetrics[targetKw] = { searchVolume: 0, pcVolume: 0, mobileVolume: 0 };
         }
 
         try {
@@ -1626,6 +1717,40 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
         }
     }
 
+    // [v3.2] 원본 키워드가 SearchAd에서 0/미매칭인 경우,
+    //        공백 토큰(노이즈 제외) 중 최대 searchVolume으로 보완하고 competitionIndex를 재계산한다.
+    for (const kw of keywords) {
+        const base = originalMetrics[kw];
+        if (!base) continue;
+        if (typeof base.searchVolume === 'number' && base.searchVolume > 0) continue;
+
+        const parts = String(kw ?? '')
+            .split(/\s+/)
+            .map(p => p.trim())
+            .filter(p => p.length >= 3)
+            .filter(p => !NOISE_TOKENS.has(p));
+        if (parts.length < 2) continue;
+
+        let bestPart = null;
+        let bestVol = 0;
+        for (const p of parts) {
+            const m = metrics[p];
+            const v = typeof m?.searchVolume === 'number' ? m.searchVolume : 0;
+            if (v > bestVol) {
+                bestVol = v;
+                bestPart = p;
+            }
+        }
+
+        if (bestVol > 0) {
+            base.searchVolume = bestVol;
+            base._resolvedFrom = bestPart;
+            const vol = bestVol || 1;
+            base.competitionIndex = parseFloat(((base.documentCount || 0) / vol).toFixed(2));
+            logger.process(`[Metrics] "${kw}" → token "${bestPart}"로 검색량 보완: ${bestVol}`);
+        }
+    }
+
     const topKeywords = keywords.slice(0, 5);
     const suggestionsMap = {};
     await Promise.all(
@@ -1639,6 +1764,32 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
     });
 
     return originalMetrics;
+}
+
+// [v3.0] 모델 출력의 searchVolume/documentCount/competitionIndex는 신뢰하지 않고,
+//        서버에서 수집한 실측 metrics로 덮어쓴다(운영 안정성: SEARCH==DOCS 같은 패턴 방지).
+function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
+    if (!analysisJson || !Array.isArray(analysisJson.blogPosts)) return analysisJson;
+    if (!measuredMetrics || typeof measuredMetrics !== 'object') return analysisJson;
+
+    for (const post of analysisJson.blogPosts) {
+        const key = post?.targetKeyword || post?.mainKeyword;
+        if (!key) continue;
+        const m = measuredMetrics[key];
+        if (!m) continue;
+
+        const sv = typeof m.searchVolume === 'number' ? m.searchVolume : 0;
+        const dc = typeof m.documentCount === 'number' ? m.documentCount : 0;
+        const ci =
+            typeof m.competitionIndex === 'number'
+                ? m.competitionIndex
+                : parseFloat((dc / Math.max(sv, 1)).toFixed(2));
+
+        post.searchVolume = sv;
+        post.documentCount = dc;
+        post.competitionIndex = ci;
+    }
+    return analysisJson;
 }
 
 async function getGoogleSuggestions(keyword, lang = 'ko', country = 'KR') {
@@ -1702,14 +1853,15 @@ app.post('/api/analyze', async (req, res) => {
 
   // [Step 1 & 2] 네이버 데이터 기반 블루오션 필터링 레이어
   let metricsContext = "";
+  let measuredMetrics = {};
   try {
       // 영미권도 일단은 네이버 API를 사용하도록 작업 (추후 분리 용이하게)
       const searchTerms = await extractSearchKeywords(manualText ? { text: manualText } : trends, lang);
       if (searchTerms.length > 0) {
           const suggestLang = region === 'US' ? 'en' : 'ko';
           const suggestCountry = region === 'US' ? 'US' : 'KR';
-          const metrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
-          metricsContext = Object.entries(metrics).map(([kw, data]) => 
+          measuredMetrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
+          metricsContext = Object.entries(measuredMetrics).map(([kw, data]) => 
               formatMetricsLine(kw, data, lang)
           ).join('\n');
           logger.success(`[Analysis] Successfully gathered metrics for ${searchTerms.length} terms.`);
@@ -1801,8 +1953,10 @@ app.post('/api/analyze', async (req, res) => {
 
         logger.success(`[Analysis] [${api.name}] Successful with ${modelName}${useSchema ? ' (schema)' : ''}`);
         success = true;
-        // [v2.7] 기획안 우선순위 태깅 (painScore + queryConfidence 기반)
-        const analysisJson = annotateAnalysisPriority(JSON.parse(text));
+        const parsed = JSON.parse(text);
+        // [v3.0] 실측 metrics 덮어쓰기 → 그 다음 priority 태깅
+        const patched = applyMeasuredMetricsToAnalysis(parsed, measuredMetrics);
+        const analysisJson = annotateAnalysisPriority(patched);
         const PRIORITY_ORDER = { primary: 0, secondary: 1, review: 2 };
         if (Array.isArray(analysisJson.blogPosts)) {
             analysisJson.blogPosts.sort((a, b) => {
@@ -2661,16 +2815,25 @@ app.post('/api/refresh-oldest', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  logger.success(`TrendRadar v2.0 running at http://localhost:${PORT}`);
-});
+export { calcSeoViabilityScore, annotateAnalysisPriority };
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    logger.error(`Port ${PORT} is already in use. Please close the other process or use a different port (e.g., set PORT=3001 in .env).`);
-    process.exit(1);
-  } else {
-    logger.error('Server error:', err);
-  }
-});
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const isMain = process.argv[1] && fileURLToPath(new URL(`file://${process.argv[1]}`)) === __filename;
+
+if (isMain) {
+    const PORT = process.env.PORT || 3000;
+    const server = app.listen(PORT, () => {
+        logger.success(`TrendRadar v2.0 running at http://localhost:${PORT}`);
+    });
+
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            logger.error(`Port ${PORT} is already in use. Please close the other process or use a different port (e.g., set PORT=3001 in .env).`);
+            process.exit(1);
+        } else {
+            logger.error('Server error:', err);
+        }
+    });
+}

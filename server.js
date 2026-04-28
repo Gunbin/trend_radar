@@ -554,8 +554,7 @@ async function verifyUrl(url, timeoutMs = 5000) {
                 maxRedirects: 5,
                 validateStatus: s => s >= 200 && s < 400,
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; TrendRadar/2.6; +https://github.com/)',
-                    'Range': 'bytes=0-0' // 첫 1바이트만 요청
+                    'User-Agent': 'Mozilla/5.0 (compatible; TrendRadar/2.6; +https://github.com/)'
                 }
             });
             return res.status >= 200 && res.status < 400;
@@ -604,8 +603,9 @@ async function verifyAndFixReferences(markdown) {
                 }
             }
 
-            // 도메인 루트도 실패 → 마크다운 링크 제거, 라벨만 남김
-            return { whole, replacement: label, status: 'link-stripped', from: url };
+            // 도메인 루트도 실패해도 링크는 유지 (false negative 방지)
+            // 사용자가 브라우저에서 접근 가능한 경우가 있어 링크 삭제 대신 원본 보존
+            return { whole, replacement: whole, status: 'kept-on-fail', from: url };
         } catch (err) {
             // 예기치 못한 오류는 원본 유지
             return { whole, replacement: whole, status: 'error', error: err.message };
@@ -626,8 +626,8 @@ async function verifyAndFixReferences(markdown) {
         for (const r of changed) {
             if (r.status === 'shrunk-to-root') {
                 logger.warn(`[References] Dead deep-link → 도메인 루트 축약: ${r.from} → ${r.to}`);
-            } else if (r.status === 'link-stripped') {
-                logger.warn(`[References] URL 검증 실패 (루트도 실패) → 링크 제거: ${r.from}`);
+            } else if (r.status === 'kept-on-fail') {
+                logger.warn(`[References] URL 검증 실패 (루트도 실패) → 원본 링크 유지: ${r.from}`);
             }
         }
     } else {
@@ -636,6 +636,91 @@ async function verifyAndFixReferences(markdown) {
 
     // 5) 전체 마크다운에서 블록 교체
     return markdown.replace(originalBlock, fixedBlock);
+}
+
+// [v2.9] Mermaid/Markmap shortcode 오출력 자동 교정
+// 모델이 {{< sequenceDiagram >}} ... {{< /sequenceDiagram >}} 형태를 내보내면
+// Hugo가 shortcode로 해석해 빌드가 깨지므로 fenced code block으로 강제 변환한다.
+function normalizeDiagramShortcodes(markdown) {
+    if (!markdown || typeof markdown !== 'string') return markdown;
+
+    const diagramTypes = new Set([
+        'flowchart',
+        'sequenceDiagram',
+        'stateDiagram-v2',
+        'gantt',
+        'timeline',
+        'pie',
+        'journey',
+        'classDiagram',
+        'erDiagram',
+        'gitGraph'
+    ]);
+
+    const shortcodeRegex = /\{\{<\s*([a-zA-Z0-9_-]+)\s*>\}\}\s*([\s\S]*?)\s*\{\{<\s*\/\s*\1\s*>\}\}/g;
+    return markdown.replace(shortcodeRegex, (_full, rawType, rawBody) => {
+        const type = String(rawType || '').trim();
+        const body = String(rawBody || '').trim();
+
+        if (type === 'markmap') {
+            return `\`\`\`markmap\n${body}\n\`\`\``;
+        }
+
+        if (!diagramTypes.has(type)) {
+            return _full; // tip/warning/info 등 기존 shortcode는 그대로 유지
+        }
+
+        if (body.startsWith(type)) {
+            return `\`\`\`mermaid\n${body}\n\`\`\``;
+        }
+        return `\`\`\`mermaid\n${type}\n${body}\n\`\`\``;
+    });
+}
+
+// [v2.9] Mermaid sequence 문법 안전화
+// 운영 중 모델 출력 편차로 인한 syntax error를 줄이기 위해
+// sequenceDiagram 블록의 민감 토큰을 보수적으로 정규화한다.
+function sanitizeMermaidBlocks(markdown) {
+    if (!markdown || typeof markdown !== 'string') return markdown;
+
+    const mermaidBlockRegex = /```mermaid\s*\n([\s\S]*?)```/g;
+    return markdown.replace(mermaidBlockRegex, (_full, rawBody) => {
+        let body = String(rawBody || '').trim();
+        if (!body) return _full;
+
+        if (body.startsWith('sequenceDiagram')) {
+            const lines = body.split('\n').map((line) => {
+                let l = line;
+
+                // cross arrow는 런타임 파서 에러를 자주 유발해 안전한 dashed arrow로 교체
+                l = l.replace(/--x/g, '-->>');
+
+                // participant 별칭은 특수문자를 제거해 파서 안정성 강화
+                l = l.replace(/^(\s*participant\s+\w+\s+as\s+)(.+)$/u, (_m, prefix, label) => {
+                    const safeLabel = String(label)
+                        .replace(/^["']|["']$/g, '')
+                        .replace(/[^\p{L}\p{N}\s_-]/gu, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    return `${prefix}${safeLabel || 'Participant'}`;
+                });
+
+                // message 텍스트의 고위험 특수문자 축소
+                l = l.replace(/^(\s*\w+\s*[-.]+>{1,2}\s*\w+\s*:\s*)(.+)$/u, (_m, prefix, msg) => {
+                    const safeMsg = String(msg)
+                        .replace(/[^\p{L}\p{N}\s.,!?-]/gu, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    return `${prefix}${safeMsg || 'message'}`;
+                });
+
+                return l;
+            });
+            body = lines.join('\n');
+        }
+
+        return `\`\`\`mermaid\n${body}\n\`\`\``;
+    });
 }
 
 // --- Cloudinary Upload Helper ---
@@ -2262,7 +2347,7 @@ app.post('/api/generate-post', async (req, res) => {
           enrichedFacts: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.facts) && postPlan.enrichedFacts.facts.length > 0)
               ? postPlan.enrichedFacts.facts.map((f, i) => `${i + 1}. ${f}`).join('\n')
               : '',
-          outputFormat: typeof FORMAT_TEMPLATES !== 'undefined' ? (FORMAT_TEMPLATES.find(t => t.key === selectFormatTemplate(angle, postPlan.contentDepth))?.label || '') : '',
+          outputFormat: FORMAT_MAP[`${angle}-${postPlan.contentDepth}`] || '',
           // 이미지 자리에 플레이스홀더 텍스트만 넣도록 유도하거나, 빈 URL 전달
           context_url_1: "IMAGE_PLACEHOLDER_1",
           context_url_2: "IMAGE_PLACEHOLDER_2",
@@ -2312,6 +2397,8 @@ app.post('/api/generate-post', async (req, res) => {
       /```json[\s\S]*?"@type"\s*:\s*"FAQPage"[\s\S]*?```/g,
       ''
   ).trim();
+  bodyMarkdown = normalizeDiagramShortcodes(bodyMarkdown).trim();
+  bodyMarkdown = sanitizeMermaidBlocks(bodyMarkdown).trim();
   bodyMarkdown = bodyMarkdown.replace(/\n{3,}/g, '\n\n').trim();
 
   const usedImageUrls = new Set(); // 포스팅 단위 중복 이미지 방지용 Set

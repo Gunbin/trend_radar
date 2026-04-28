@@ -213,6 +213,7 @@ async function fetchTrends() {
     // Filter data based on active settings and region
     const data = {
         timestamp: rawData.timestamp,
+        sourceDescriptions: rawData.sourceDescriptions,
         gNewsBiz: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.gNewsBiz) ? rawData.gNewsBiz : [],
         signal: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.nate) ? rawData.signal : [],
         gNewsLabor: (APP_CONFIG.region === 'KR' && APP_CONFIG.sources.KR.gNewsLabor) ? rawData.gNewsLabor : [],

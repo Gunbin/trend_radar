@@ -82,6 +82,7 @@ _shared:
             - No heavy Mermaid style/classDef soup.
             - No fake pie slices ([T1] number rule).
             - No Mermaid `mindmap` (unstable) — use Markmap for mind-map-like TOC.
+            - Never output Mermaid/Markmap as Hugo shortcode (`{{< ... >}}`). Use fenced code blocks only (` ```mermaid`, ` ```markmap`).
             - No forced diagram when a photo fits better.
     - |
       **[Hugo shortcode callouts — tip / warning / info]:** When a block of truth must stand out, wrap in one of these (max 1–2 per post, only when natural):
@@ -174,6 +175,7 @@ tasks:
       Analyze the provided trend data and extract 8–10 noun-based search keywords (Search Terms) best suited for querying Naver to get search volume and document counts.
       - Keywords must be in English.
       - Keywords should be specific enough for keyword tools (e.g., instead of "Apple", use "Apple Watch Battery Replacement").
+      - Read `sourceDescriptions` first and reflect source intent. For news/volatile sources (google, reddit, yahoo, buzzfeed), prefer scenario-specific long-tail terms over raw head terms.
       - [Important] Search volume lookup treats whitespace-insensitive variants as the same keyword (e.g., "real estate direct deal" vs "realestatedirectdeal").
       - Therefore, keep keywords in a natural spaced form, but **NEVER output a single-token head term** (e.g., "Seoul", "Real estate") by itself.
       - Each keyword must combine **2+ meaningful units** (compound noun / specific intent phrase). Examples: "Real estate direct deal contract checklist", "Illegal private loan 신고 방법", "Seoul public kids cafe reservation tips".
@@ -196,6 +198,11 @@ tasks:
 
       [Pre-Fact Verification]
       If the provided input data alone makes it difficult to grasp specific contexts—such as policy support limits, discount conditions, or approximate price ranges of products—making logical planning difficult, actively use the internal search function to first identify core facts before creating the plan.
+
+      [Source-Type Interpretation — mandatory before planning]
+      `sourceDescriptions` in `trends_data` explains the character of each source. Read it first, then adapt keyword strategy by source type.
+      - News/volatile sources (google, reddit, yahoo, buzzfeed): high same-day competition risk. Avoid raw head terms as-is; convert them into concrete, scenario-based long-tail keywords.
+      - Evergreen/problem-solving sources (redditScams, redditPoverty, redditFrugal): prioritize stable-intent demand. Keeping the core term or using light derivation is allowed.
 
       [Plan Portfolio Rules (Data-Key Targeting)]
       1. Plan 1 (Evergreen First): Prioritize "redditScams", "redditPoverty", "redditFrugal" sources. Only enter "google" or "reddit" if these are weak. NEVER use raw "google" keywords; always convert to long-tail behavior-derived keywords.

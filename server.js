@@ -41,14 +41,14 @@ const DEFAULT_ANGLE = 'guide';
 
 const FORMAT_MAP = {
     'expose-Snack':      '단문 팩트 나열 → 핵심 경고 → 행동지침 1~2개',
-    'expose-Normal':     '훅 → 리스크 원인 분석 → 피해 시나리오 → 회피법 → FAQ',
-    'expose-Deep-Dive':  '훅 → 배경 → 심층 리스크 3단계 분석 → 케이스별 대응 → FAQ',
+    'expose-Normal':     '[참고 방향] 리스크 원인 → 피해 시나리오 → 회피법 → FAQ. 순서 변경/섹션 통합/새 H2 이름 허용.',
+    'expose-Deep-Dive':  '[참고 방향] 배경 → 심층 리스크 분석 → 케이스별 대응 → FAQ. 주제에 맞는 섹션 재구성 권장.',
     'guide-Snack':       '핵심 단계만 번호 목록 3~5개',
-    'guide-Normal':      '훅 → 준비물/전제 → 번호 단계 가이드 → 자주 막히는 지점 → FAQ',
-    'guide-Deep-Dive':   '훅 → 개요 → 상세 단계별 가이드 → 오류 대처법 → 고급 팁 → FAQ',
+    'guide-Normal':      '[참고 방향] 준비물/전제 → 단계 가이드 → 막히는 지점 → FAQ. 단계 수/순서 유동 조정 가능.',
+    'guide-Deep-Dive':   '[참고 방향] 개요 → 상세 단계 → 오류 대처법 → 고급 팁 → FAQ. 완수 가능성 기준으로 구조 설계.',
     'compare-Snack':     '비교표 1개 + 한줄 결론',
-    'compare-Normal':    '훅 → 평가기준 제시 → 비교표 → 상황별 추천 → FAQ',
-    'compare-Deep-Dive': '훅 → 평가기준 가중치 설명 → 항목별 심층비교 → 상황별 최종결론 → FAQ',
+    'compare-Normal':    '[참고 방향] 평가기준 → 비교표 → 상황별 추천 → FAQ. 비교 기준 수/순서는 주제 맞춤.',
+    'compare-Deep-Dive': '[참고 방향] 평가기준 가중치 → 항목별 비교 → 상황별 결론 → FAQ. 기계적 나열 금지.',
 };
 
 // === [v2.6] trend_analysis / manual_analysis 공통 응답 스키마 ===
@@ -142,6 +142,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
 // [v2.7] 기획안 품질 분류 — painScore + queryConfidence + competitionIndex 조합으로 _meta.priority 태깅
 function annotateAnalysisPriority(analysisResult) {
     if (!analysisResult || !Array.isArray(analysisResult.blogPosts)) return analysisResult;
+    const COMPETITION_HARD_LIMIT = 3.0;
 
     for (const post of analysisResult.blogPosts) {
         const painScore = Number.isInteger(post.painScore) ? post.painScore : null;
@@ -158,12 +159,16 @@ function annotateAnalysisPriority(analysisResult) {
             priority = 'review';
             reason = 'queryConfidence=Low';
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — queryConfidence=Low`);
+        } else if (compIdx !== null && compIdx > COMPETITION_HARD_LIMIT) {
+            priority = 'secondary';
+            reason = `⚠️ 경쟁률 과열 (competitionIndex ${compIdx} > ${COMPETITION_HARD_LIMIT})`;
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — 경쟁률 과열로 secondary 강등`);
         } else if (compIdx !== null && compIdx < 0.5 && (painScore ?? 0) >= 8) {
             priority = 'primary';
             reason = `💎 블루오션 발견 (경쟁률 ${compIdx} < 0.5)`;
-        } else if ((painScore ?? 0) >= 9 && confidence === 'High') {
+        } else if ((painScore ?? 0) >= 9 && confidence === 'High' && (compIdx === null || compIdx <= COMPETITION_HARD_LIMIT)) {
             priority = 'primary';
-            reason = '🔥 수요 높음 (painScore 9+ & High)';
+            reason = '🔥 수요 높음 (painScore 9+ & High, 경쟁률 허용 범위)';
         } else if ((painScore ?? 0) >= 6 && confidence !== 'Low') {
             priority = 'secondary';
             reason = '평이한 수준';
@@ -753,7 +758,7 @@ function buildRecentKeywordsContext(lang) {
     const arr = prunePublishedIndex(readPublishedIndex()).filter(it => it.lang === lang);
     if (!arr.length) return '';
     // 슬러그를 포함하여 어떤 맥락으로 쓰여졌는지 AI가 유추할 수 있도록 힌트 제공
-    const lines = arr.slice(-50).map(it => `- 키워드: ${it.mainKeyword} (주제 힌트: ${it.slug})`).join('\n');
+    const lines = arr.slice(-50).map(it => `- 키워드: ${it.mainKeyword} / 앵글: ${it.angleType || '미상'} (주제 힌트: ${it.slug})`).join('\n');
     return lang === 'ko'
         ? `\n\n[최근 30일 발행 이력 (중복 및 유사 주제 절대 금지)]\n${lines}\n`
         : `\n\n[Published in the last 30 days (STRICTLY DO NOT repeat or paraphrase these topics)]\n${lines}\n`;
@@ -1798,6 +1803,14 @@ app.post('/api/analyze', async (req, res) => {
         success = true;
         // [v2.7] 기획안 우선순위 태깅 (painScore + queryConfidence 기반)
         const analysisJson = annotateAnalysisPriority(JSON.parse(text));
+        const PRIORITY_ORDER = { primary: 0, secondary: 1, review: 2 };
+        if (Array.isArray(analysisJson.blogPosts)) {
+            analysisJson.blogPosts.sort((a, b) => {
+                const left = PRIORITY_ORDER[a?._meta?.priority] ?? 2;
+                const right = PRIORITY_ORDER[b?._meta?.priority] ?? 2;
+                return left - right;
+            });
+        }
         return res.json(analysisJson);
       } catch (error) {
         lastError = error;
@@ -2139,14 +2152,27 @@ app.post('/api/generate-post', async (req, res) => {
       logger.error('[References] verifyAndFixReferences 실패 (원본 유지)', e.message);
   }
 
+  // [v2.8] FAQPage JSON-LD 코드블록 제거
+  // front matter faq: 배열을 통해 테마에서 자동 삽입되므로 본문 노출은 제거
+  bodyMarkdown = bodyMarkdown.replace(
+      /```json[\s\S]*?"@type"\s*:\s*"FAQPage"[\s\S]*?```/g,
+      ''
+  ).trim();
+  bodyMarkdown = bodyMarkdown.replace(/\n{3,}/g, '\n\n').trim();
+
   const usedImageUrls = new Set(); // 포스팅 단위 중복 이미지 방지용 Set
 
   // 2. 썸네일 생성 (title 기반)
   const selectedTitle = postPlan.viralTitles ? 
       (postPlan.viralTitles.dataDriven || postPlan.viralTitles.curiosity || postPlan.viralTitles.solution || postPlan.mainKeyword) : 
       postPlan.viralTitle;
+  // [v2.8] 내부 분석 메트릭이 제목에 노출되는 경우 안전한 제목으로 대체
+  const internalMetricPattern = /경쟁[률율]?\s*[\d.]+|블루오션|painScore|competitionIndex|searchVolume|documentCount|\b0\.\d{2}\b|blue ocean|competition index/i;
+  const safeTitle = internalMetricPattern.test(String(selectedTitle || ''))
+      ? (postPlan.viralTitles?.curiosity || postPlan.viralTitles?.solution || postPlan.mainKeyword || selectedTitle)
+      : selectedTitle;
   
-  let thumbnailSearchKeyword = selectedTitle;
+  let thumbnailSearchKeyword = safeTitle;
   let skipThumbnailTranslation = false;
 
   if (region === 'US') {
@@ -2157,7 +2183,7 @@ app.post('/api/generate-post', async (req, res) => {
       skipThumbnailTranslation = true;
   }
 
-  logger.process(`[Image Fetch] Fetching thumbnail for keyword: ${thumbnailSearchKeyword} (Title: ${selectedTitle})`);
+  logger.process(`[Image Fetch] Fetching thumbnail for keyword: ${thumbnailSearchKeyword} (Title: ${safeTitle})`);
   const thumbnailUrl = await getRandomImage(thumbnailSearchKeyword, true, skipThumbnailTranslation, usedImageUrls);
 
   // 3. 본문 내 이미지 치환 (Alt 텍스트 + 영문 키워드 기반)
@@ -2195,6 +2221,7 @@ app.post('/api/generate-post', async (req, res) => {
   // 오타 방지를 위해 정규식을 IMAGE_PLACE[A-Z_]*\d+ 형태로 유연하게 변경
   const rawPlaceholderRegex = /<img[^>]*IMAGE_PLACE[A-Z_]*\d+[^>]*>|!?\[[^\]]*\]\s*\(\s*[^)]*IMAGE_PLACE[A-Z_]*\d+[^)]*\)|!?\[\s*IMAGE_PLACE[A-Z_]*\d+\s*\]|IMAGE_PLACE[A-Z_]*\d+/g;
   const rawMatches = [...bodyMarkdown.matchAll(rawPlaceholderRegex)];
+  let sharedPlaceholderIndex = placeholderIndex;
 
   for (const match of rawMatches) {
       const fullMatch = match[0]; // IMAGE_PLACEHOLDER_2, IMAGE_PLACEER_2 등
@@ -2204,7 +2231,8 @@ app.post('/api/generate-post', async (req, res) => {
       let skipFallbackTranslation = region === 'US';
 
       if (region !== 'US' && postPlan.imageSearchKeywords && postPlan.imageSearchKeywords.length > 0) {
-          fallbackSearchKeyword = postPlan.imageSearchKeywords[Math.floor(Math.random() * postPlan.imageSearchKeywords.length)];
+          fallbackSearchKeyword = postPlan.imageSearchKeywords[sharedPlaceholderIndex]
+              || postPlan.imageSearchKeywords[Math.floor(Math.random() * postPlan.imageSearchKeywords.length)];
           skipFallbackTranslation = true;
       }
 
@@ -2212,12 +2240,13 @@ app.post('/api/generate-post', async (req, res) => {
       if (realImageUrl) {
           // [S2] fallback 경로도 title 속성 포함 (imageSearchKeywords 우선, 없으면 mainKeyword)
           const fallbackEng = (region !== 'US' && postPlan.imageSearchKeywords && postPlan.imageSearchKeywords.length)
-              ? postPlan.imageSearchKeywords[0]
+              ? (postPlan.imageSearchKeywords[sharedPlaceholderIndex] || postPlan.imageSearchKeywords[0])
               : fallbackSearchKeyword;
           const titlePart = fallbackEng ? ` "${String(fallbackEng).replace(/"/g, '\\"')}"` : '';
           const replacement = `\n\n![${postPlan.mainKeyword}](${realImageUrl}${titlePart})\n\n`;
           bodyMarkdown = bodyMarkdown.replace(fullMatch, replacement);
       }
+      sharedPlaceholderIndex++;
   }
 
   // 4. Hugo Front-matter 구성
@@ -2231,7 +2260,7 @@ app.post('/api/generate-post', async (req, res) => {
       || (Array.isArray(postPlan.imageSearchKeywords) && postPlan.imageSearchKeywords[0])
       || postPlan.mainKeyword
       || 'post';
-  const fallbackSource = postPlan.mainKeyword || selectedTitle;
+  const fallbackSource = postPlan.mainKeyword || safeTitle;
   const finalSlug = makeUniqueSlug(slugSource, fallbackSource, `${postPlan.mainKeyword}|${selectedCategory}`);
 
   // [v2.4] 본문 후처리: ① 인터널 링크 자동 삽입 → ② 쿠팡 파트너스 박스
@@ -2323,7 +2352,7 @@ app.post('/api/generate-post', async (req, res) => {
 
   const hugoHeader = `---
 author: "TrendRadar"
-title: "${yamlEscape(selectedTitle)}"
+title: "${yamlEscape(safeTitle)}"
 date: ${currentDate}
 lastmod: ${currentDate}
 slug: "${finalSlug}"
@@ -2339,6 +2368,7 @@ ${faqYaml}---
   const indexEntry = {
     slug: finalSlug,
     mainKeyword: postPlan.mainKeyword || '',
+    angleType: postPlan.angleType || '',
     lsiKeywords: Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords : [],
     coreEntities: Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities : [],
     // [S1] 인터널 링크 의미 매칭용 — 현재 글의 tags 를 인덱스에 저장

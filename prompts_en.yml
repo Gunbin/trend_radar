@@ -22,17 +22,17 @@ _shared:
     - "**[T1] Color Unicode emojis: zero:** No pictogram faces, symbols, or decorative emojis. If emotion is needed, use ASCII or plain-text cues or short parentheticals, **0–2 times** total, only when natural; **0** is correct for serious or regulatory topics. Vary the pattern to kill an AI aftertaste."
     - "**[T1] First-person roleplay + AI cliches are strictly forbidden:** Never self-cast the writer as 'your mentor/senior/friend', never write fake dialogue lines like 'Let's find out together', and never narrate in roleplay mode ('I, as your...'). Keep a factual, confident tone centered on evidence. Also delete bloated AI-openers such as 'In this article, we will...', 'Recently trending...', and similar filler before finalizing."
     # ══ TIER 2 — STRUCTURE (SEO, dwell, trust) ══
-    - "**[T2] Intro: Hook & BLUF (mandatory):** Do **not** open the body with `##` (H2). First content bridges the auto-rendered title and the first H2. **Never** output a `#` H1 line (see [System Structure Note] in the template). First sentence: (a) fact hook with numbers, entities, or dates from {{coreFact}}, (b) one line that mirrors the reader's inner voice (not a generic empathy prompt), or (c) a counter-intuitive fact. **Blacklist openers** same spirit as [T1]. Then 2–3 sentence BLUF including {{coreFact}} for answer engines. State data-backed judgments firmly; no fake 'I tested this myself' stories, no waffling 'it seems'."
+    - "**[T2] Intro variation (Anti-Pattern):** Do not repeat the same opening formula (hook → summary → differentiation) in every post. Pick the opening style that best fits the topic: A) conclusion-first opener (state the coreFact conclusion in 1–2 lines, blend BLUF naturally if needed), B) situation-led opener (start from a concrete reader pain scenario, then pivot to solution flow), or C) direct-body opener (minimal intro and fast move into the first H2). You may vary where `{{serpDifferentiation}}` appears (intro, early body, or mid-body) instead of always placing it in the same location. Never use fake first-person anecdotes or vague hedging."
     - "**[T2] SERP Differentiation (lead with the gap):** If `{{serpDifferentiation}}` is non-empty, right after the BLUF (or early in the first H2) **skip** what every top result already says; **lead with the stated gap** so the reader feels 'this is different' in the first scroll. If empty or still the literal `{{serpDifferentiation}}`, ignore and write normally."
     - "**[T2] Information Gain (mandatory in body):** Implement `{{infoGainAngle}}` in at least one H2. It must feel like 'I haven't seen this angle elsewhere'. No invented numbers or cases not in the data."
-    - "**[T2] Dynamic Templating:** Follow `{{outputFormat}}` for layout and narrative. Do not reuse the same intro–body–conclusion shape every time."
+    - "**[T2] Structural flexibility (Anti-Template):** Treat `{{outputFormat}}` as directional guidance, not a fixed template. Do not follow the sequence mechanically; merge/split/reorder sections when the topic demands it, and add new H2 labels if they improve completion clarity. Single success criterion: can the reader actually complete the task using this post alone?"
     - "**[T2] Source concealment vs information exposure (split protocol):**\n        [Conceal — abstract these]: raw community or tabloid-style source labels from the input (e.g. reddit, instiz, buzzfeed tier where gossip), and throwaway reference-only dates. Paraphrase as 'a recent online thread' etc. Pasting bracket placeholders ([ ]) or system tokens into the body is fatal.\n        [Expose — state plainly]: official agencies (FTC, SEC, IRS, CDC…), real deadlines, percentages, dollars, and externally verified official facts. Put confirmed URLs in `### [References]` when you have them.\n        (CRITICAL: never print '[Google Search]' or similar system traces.)"
     - "**[T2] Enriched facts priority:** When `{{enrichedFacts}}` is provided, use them as the first-line evidence; copy numbers, dates, and org names exactly. Do not add statistics that are not there."
-    - "**[T2] Technical SEO — FAQ + schema:** Add FAQ before the end per `{{contentDepth}}`: **Snack/Bite-sized = 1 core FAQ only (no JSON-LD)**, **Normal = 2–3 FAQs + FAQPage JSON-LD**, **Deep-Dive = 4–5 FAQs + FAQPage JSON-LD**. **Do not** use a dull `### FAQ` or generic 'Frequently Asked Questions' as the only heading — use a topic-tight, engaging H3. Phrase questions with `{{searchBehaviorQueries}}`-style colloquial language."
+    - "**[T2] Technical SEO — FAQ + schema:** Add FAQ before the end per `{{contentDepth}}`: **Snack/Bite-sized = 1 core FAQ only (no JSON-LD)**, **Normal = 2–3 FAQs + FAQPage JSON-LD**, **Deep-Dive = 4–5 FAQs + FAQPage JSON-LD**. **Do not** use a dull `### FAQ` or generic 'Frequently Asked Questions' as the only heading — use a topic-tight, engaging H3. Phrase questions with `{{searchBehaviorQueries}}`-style colloquial language. Important: FAQPage JSON-LD is automatically injected into `<head>` from the front matter `faq:` array, so never print FAQPage JSON-LD in the body (including ```json code blocks)."
     - "**[T2] References (SEO anchor):** If `{{source_urls}}` exists, end the post with `### [References]` and a bullet list of `- [Title](URL)`. If no URLs, omit the whole section."
     # ══ TIER 3 — STYLE (apply after T1+T2) ══
     - "**[T3] Information density vs. volume balance:** Match `{{contentDepth}}`. Drop filler backstory, forced empathy, and fake scenarios. Ban hollow closers like 'it can be said that…'. Keep paragraphs short (2–3 sentences) but stack **4–5+** short paragraphs per H2 where needed. Never repeat a mechanical example in every H2. Deep-dive only in 1–2 key sections."
-    - "**[T3] Strategic visual anchors (Bold) are mandatory:** A skimming reader should grasp the core by scanning bold text only. In **every paragraph**, bold **1–2 key tokens/short phrases**. Prioritize 3 classes: (1) concrete numbers/deadlines (e.g., **up to $50 monthly refund**), (2) must-do actions (e.g., **check overlapping discount eligibility first**), (3) critical penalties (e.g., **benefit revoked after 3 violations**). Do not bold emotional filler or generic verbs."
+    - "**[T3] Strategic bolding with restraint:** Do not bold every paragraph mechanically. Use bold only at 3–6 high-signal points across the whole post. Prioritize 3 classes: (1) concrete numbers/deadlines (e.g., **up to $50 monthly refund**), (2) must-do actions (e.g., **check overlapping discount eligibility first**), (3) critical penalties (e.g., **benefit revoked after 3 violations**). Do not bold emotional filler, generic narration, or repeated heading language. Too much bold dilutes emphasis."
     - "**[T3] H2/H3 must be informational and direct:** Headings are decision signboards. Ban cheesy conversational headers like 'mentor's quick tip', 'shall we see?', or vague labels like 'Introduction'. Build headings from concrete facts + reader pain points. (e.g., 'Mileage vs 5-day rule: which rider profile wins?', 'Three penalty triggers that cancel your refund')."
     - "**[T3] Safe tone:** No 'as your bestie', 'your friend here', or other roleplay asides. No hostile 'you', forced memes, or exclamation spam. Keep the persona in the voice, not in fake friendship lines."
     - "**[T3] Affiliate link marker (single slot):** If a specific product truly helps, one line on its own after the line: `{{coupangLink:product name}}` (English, consumer phrase, e.g. `{{coupangLink:wireless earbuds}}`). Body context overrides `shoppableKeyword` if needed. **Max one per post.** Skip entirely for policy-only, finance-abstract, or no-product topics."
@@ -43,19 +43,33 @@ _shared:
     - "**[T3] Emphasis: markdown only in body:** No fake HTML (`<span style=...>`, `<mark>`, etc.) and no typographic tricks; use normal **bold** and *italic* in running text."
     - |
       "**Visual element insertion (Image / Mermaid / Markmap):**
-            Follow the **visual slot count** below based on `{{contentDepth}}` (one slot = one image **or** one Mermaid/Markmap code block in that position):
-            - **Snack** or **Bite-sized** : **1 slot** — use `IMAGE_PLACEHOLDER_1` only. Place it near the intro / first body section.
-            - **Normal**            : **2 slots** — `IMAGE_PLACEHOLDER_1`, `IMAGE_PLACEHOLDER_2`
-            - **Deep-Dive**         : **3 slots** — `IMAGE_PLACEHOLDER_1`, `IMAGE_PLACEHOLDER_2`, `IMAGE_PLACEHOLDER_3`
-            Do not exceed the slot count. (Forcing 3 visual beats into a short post inflates chart/image ratio vs. text and can read as a thin, decorative page.)
+            Follow the **visual slot range** below based on `{{contentDepth}}` (one slot = one image **or** one Mermaid/Markmap code block in that position):
+            - **Snack** or **Bite-sized** : **1–2 slots** — 1 is often enough for short posts.
+            - **Normal**            : **1–3 slots** — start with 1–2; use 3 only when information density justifies it.
+            - **Deep-Dive**         : **2–4 slots** — scale with section count and complexity.
+            Shared rule: never add visuals just to hit a number. Place them only where comprehension clearly improves.
 
             For each slot, **independently** choose the best format using the rules below.
 
-            [① Prefer Mermaid or Markmap when]
-            - Step flows, A vs B, state changes (Apply → Review → Approve), timelines
-            - TOC-style overview, ratios with **real** numbers (see [T1] — no invented figures)
+            [① Mermaid/Markmap selection — type justification is mandatory]
+            If you decide to use a diagram, answer this before writing code:
+            "What is the core structure of this section?"
+            → Choose exactly one type based on that answer.
+            → Do not reuse the same Mermaid type more than once in the same post.
 
-            → Write a fenced code block. Types: **flowchart LR**, timeline, pie (real numbers only), journey, sequenceDiagram, stateDiagram-v2, gantt, Markmap (language tag: `markmap`).
+            Type selection rules (no overlap / no lazy defaults):
+            - **flowchart LR**: only when explicit decision branching or system processing flow exists.
+              If it's just linear steps (1→2→3), prefer numbered lists or timeline.
+            - timeline: only when dates/periods are explicit.
+            - pie: only with real numeric ratios; never without actual numbers.
+            - journey: only when emotional/experience progression is central.
+            - sequenceDiagram: only for multi-actor back-and-forth interactions (e.g., request-review-approval, API exchanges).
+            - stateDiagram-v2: only when clear state transitions exist (before/in progress/after).
+            - gantt: only when 2+ tracks run in parallel.
+            - Markmap: for TOC-style concept overviews of broader posts.
+
+            → If no type fits naturally, choose an image instead.
+            → "flowchart LR is the safest default" is not a valid reason.
 
             → If you use Mermaid/Markmap for a slot, **do not** also put `IMAGE_PLACEHOLDER_N` in that same slot (the code block *is* the slot). Use `IMAGE_PLACEHOLDER_N` only for true image slots.
 
@@ -74,6 +88,45 @@ _shared:
       - {{< tip >}}saving or core tips{{< /tip >}}
       - {{< warning >}}missable conditions or risks{{< /warning >}}
       - {{< info >}}extra policy or context{{< /info >}}
+
+  post_writing_template_blocks:
+    trust_anchor: |
+      [Trust Anchors — must appear in the body]
+      ① enrichedFacts (verified facts): {{enrichedFacts}}
+         → Use externally verified numbers, dates, and institution names as-is.
+      ② coreFact (planning fact): {{coreFact}}
+         → Use when ① is missing in a section. Never invent numbers outside it.
+      ③ If both are weak or empty:
+         → Write with official names, institutions, and dates; skip numeric claims.
+    plan_fields: |
+      [Post Plan]
+      - Category: {{category}}
+      - Keyword: {{mainKeyword}}
+      - Search Intent: {{searchIntent}}
+      - Target Audience: {{targetAudience}}
+      - Depth/Conclusion: {{contentDepth}} / {{conclusionType}}
+      - Lifecycle: {{lifecycle}}
+      - Shoppable Product: {{shoppableKeyword}}
+      - Core Fact: {{coreFact}}
+      - Entities: {{coreEntities}}
+      - Sub-topics: {{subTopics}}
+      - SEO Keywords: {{seoKeywords}}
+      - LSI Keywords: {{lsiKeywords}}
+      - Message: {{coreMessage}}
+      - SERP Differentiation: {{serpDifferentiation}}
+      - Information Gain Angle: {{infoGainAngle}}
+      - Format Structure (Dynamic Templating): {{outputFormat}}
+      - Searcher Colloquial Intent: {{searchBehaviorQueries}}
+      - Enriched Facts: {{enrichedFacts}}
+      - Source URLs: {{source_urls}}
+      - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
+      - FAQ Data: {{faq}}
+    system_structure_note: |
+      [System Structure Note] The H1 title is auto-rendered from front matter, so do not output any `# ...` H1 in the body.
+      Your opening does not have to follow a fixed hook→summary pattern every time: you can open with a quick conclusion,
+      a short situation setup, or move into the first H2 quickly when the topic warrants it.
+      Avoid mechanical intros that read like template reuse.
+      If you start H2 immediately under the title, add at least 1–2 lines of context first.
 
   # =========================================================================
   # analysis shared SEO rules (referenced by trend_analysis/manual_analysis)
@@ -150,6 +203,7 @@ tasks:
          - Burst plans: keep the raw trending phrase as the mainKeyword so people can find it via direct search.
          - Evergreen plans: apply the "Will anyone search this 3 months from now?" lifespan test, then convert into a behavior-driven long-tail mainKeyword tied to the reader's wallet, time, or safety. (e.g., "Apple Watch" → "How to replace Apple Watch battery without getting ripped off")
          - **[Exception] However, if the original keyword itself provides overwhelming traffic volume or directness, maintain the original rather than forcing a derivation.**
+         - Enforce competition-first ordering: when painScore is similar, pick the lower competitionIndex keyword first. If competitionIndex is 1.0+, avoid raw head terms and convert to long-tail intent variants.
       2. Dynamic Angle Assignment: Choose ONE lowercase English word ('expose', 'guide', or 'compare') that fits the plan best.
       3. Data/Fact-Driven (coreFact): The fact backing your angle MUST **explicitly include at least ONE of: a number, a proper noun, an institution/outlet name, or a date**. Vague adjectives alone ("many", "significant", "recently") are NOT acceptable. NEVER invent statistics, prices, or counts. If the source has no numbers (e.g., reddit titles only), use the source name, post score, comment count, publish time, rank, or cited outlet as the fact.
       4. Search Function Integration (Fact Scouting): If the input data is vague or lacks specific numbers/dates, actively use the internal search function to verify the latest facts. **At this time, do not just look at the superficial keywords of the incident; grasp the actual public sentiment regarding the issue (whether it's a playful reaction or real anger) and reflect it in the plan.** Incorporate found background details into the coreFact. (CRITICAL: Never output system texts or symbols like '[Google Search]' anywhere in the final output.)
@@ -174,10 +228,14 @@ tasks:
       [viralTitles Required Rules]
       1. The 3 titles MUST each use a **different trigger**. No trigger may be reused.
       2. At least **1 of the 3 titles MUST directly hit the emotion/anxiety/need captured in searchIntent**.
-      3. Use the skeletons below as guidance, not as a rigid formula — adapt fluidly to the topic.
-         - curiosity: [main keyword] + [a shocking risk or hidden counter-fact most people overlook]
-         - dataDriven: [main keyword] + [specific number/rank from the data] + [a clear benefit that they'll lose out on if ignored]
-         - solution: [a sharp jab at the target audience's pain point] + [a refreshing hint of the solution]
+      3. Treat these as direction, not a formula. Bracket-assembled titles are disallowed.
+         - curiosity: lead with a hidden risk or counter-fact most readers have missed.
+         - dataDriven: anchor trust with real-life numbers from coreFact/enrichedFacts (amounts, rates, deadlines).
+         - solution: hit the reader's core pain point and imply a concrete way out.
+         - self-check: "Would this read like a natural top community post title?" If not, rewrite.
+      4. Never expose internal system metrics in any viralTitles field (competitionIndex, painScore,
+         searchVolume, documentCount). For dataDriven titles, use real-world facts from coreFact or
+         enrichedFacts (e.g., benefit amount, discount rate, deadline), not internal scoring values.
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
       Self-review the six items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
@@ -225,9 +283,9 @@ tasks:
             "sourceUrls": ["Original news/post URLs related to this topic found in the input data", "URL2"],
             "queryConfidence": "High | Medium | Low (enum only / Low => discard this plan and regenerate)",
             "viralTitles": {
-              "curiosity": "[Title built via formula, ~60 chars]",
-              "dataDriven": "[Title built via formula, ~60 chars]",
-              "solution": "[Title built via formula, ~60 chars]"
+              "curiosity": "Natural community-style curiosity title (~60 chars, no formula assembly)",
+              "dataDriven": "Credible title with real-life numbers (~60 chars)",
+              "solution": "Pain-point + implied solution title (~60 chars)"
             },
             "metaDescription": "Meta description (~150-160 chars, click-driving)",
             "slug": "URL slug in lowercase kebab-case (letters/digits/hyphens only, 5-7 words, max 60 chars). Example: apple-watch-battery-replacement-tip",
@@ -254,6 +312,7 @@ tasks:
       1. Data-based Keyword Bipartition Strategy:
          - Check the {{metrics_data}}. If the 'competitionIndex' for the keyword is under 0.5 (a clear blue ocean), you may keep the 'raw keyword' as the mainKeyword.
          - However, if the competitionIndex is 0.5 or higher, or it's a fierce red ocean, you MUST convert it into a behavior-derived long-tail keyword assuming a very specific situation for the target (e.g., 'National Pension payment gift tax for 18-year-old child') to ensure the survival of the new blog. Directly competing with large keywords without data backing is strictly prohibited.
+         - If multiple candidates have similar painScore, prioritize the lower competitionIndex. For competitionIndex 1.0+, prefer long-tail variants over broad head terms.
       2. Dynamic Angle Assignment: Choose ONE lowercase English word ('expose', 'guide', or 'compare').
       3. Data/Fact-Driven (coreFact): The fact backing your angle MUST **explicitly include at least ONE of: a number, a proper noun, an institution/outlet name, or a date**. Vague adjectives alone ("many", "significant", "recently") are NOT acceptable. NEVER invent stats. If the text has no numbers, use named entities, sources, or time markers instead.
       4. Anti-Cannibalization (CRITICAL): If a '[Published in the last 30 days]' list is appended at the bottom of the prompt, review it first. NEVER generate a plan covering the same core keyword or identical topic already published. Find a completely new angle.
@@ -278,10 +337,14 @@ tasks:
       [viralTitles Required Rules]
       1. The 3 titles MUST each use a **different trigger**. No trigger may be reused.
       2. At least **1 of the 3 titles MUST directly hit the emotion/anxiety/need captured in searchIntent**.
-      3. Use the skeletons below as guidance, not as a rigid formula — adapt fluidly to the topic.
-         - curiosity: [main keyword] + [a shocking risk or hidden counter-fact most people overlook]
-         - dataDriven: [main keyword] + [specific number/rank from the data] + [a clear benefit that they'll lose out on if ignored]
-         - solution: [a sharp jab at the target audience's pain point] + [a refreshing hint of the solution]
+      3. Treat these as direction, not a formula. Bracket-assembled titles are disallowed.
+         - curiosity: lead with a hidden risk or counter-fact most readers have missed.
+         - dataDriven: anchor trust with real-life numbers from coreFact/enrichedFacts (amounts, rates, deadlines).
+         - solution: hit the reader's core pain point and imply a concrete way out.
+         - self-check: "Would this read like a natural top community post title?" If not, rewrite.
+      4. Never expose internal system metrics in any viralTitles field (competitionIndex, painScore,
+         searchVolume, documentCount). For dataDriven titles, use real-world facts from coreFact or
+         enrichedFacts (e.g., benefit amount, discount rate, deadline), not internal scoring values.
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
       Self-review the six items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
@@ -329,9 +392,9 @@ tasks:
             "sourceUrls": ["Original news/post URLs related to this topic found in the input data", "URL2"],
             "queryConfidence": "High | Medium | Low (enum only / Low => discard this plan and regenerate)",
             "viralTitles": {
-              "curiosity": "[formula-based title]",
-              "dataDriven": "[formula-based title]",
-              "solution": "[formula-based title]"
+              "curiosity": "Natural community-style curiosity title",
+              "dataDriven": "Credible title with real-life numbers",
+              "solution": "Pain-point + implied solution title"
             },
             "metaDescription": "Meta description",
             "slug": "kebab-case-slug",
@@ -373,13 +436,7 @@ tasks:
       Help a reader with "{{searchIntent}}" face the hidden risk with facts,
       then move them to specific avoidance or resolution actions.
 
-      [Trust Anchors — must appear in the body]
-      ① enrichedFacts (verified facts): {{enrichedFacts}}
-         → Use externally verified numbers, dates, and institution names as-is.
-      ② coreFact (planning fact): {{coreFact}}
-         → Use when ① is missing in a section. Never invent numbers outside it.
-      ③ If both are weak or empty:
-         → Write with official names, institutions, and dates; skip numeric claims.
+      <<post_writing_template_blocks.trust_anchor>>
 
       [What the reader likely already knows — SKIP or keep to 1 sentence]
       The part in {{serpDifferentiation}} that corresponds to "what existing top posts already cover"
@@ -387,30 +444,9 @@ tasks:
       [Information gap this post must fill — primary H2 topic]
       The part in {{serpDifferentiation}} that corresponds to "what this post should focus on"
 
-      [Post Plan]
-      - Category: {{category}}
-      - Keyword: {{mainKeyword}}
-      - Search Intent: {{searchIntent}}
-      - Target Audience: {{targetAudience}}
-      - Depth/Conclusion: {{contentDepth}} / {{conclusionType}}
-      - Lifecycle: {{lifecycle}}
-      - Shoppable Product: {{shoppableKeyword}}
-      - Core Fact: {{coreFact}}
-      - Entities: {{coreEntities}}
-      - Sub-topics: {{subTopics}}
-      - SEO Keywords: {{seoKeywords}}
-      - LSI Keywords: {{lsiKeywords}}
-      - Message: {{coreMessage}}
-      - SERP Differentiation: {{serpDifferentiation}}
-      - Information Gain Angle: {{infoGainAngle}}
-      - Format Structure (Dynamic Templating): {{outputFormat}}
-      - Searcher Colloquial Intent: {{searchBehaviorQueries}}
-      - Enriched Facts: {{enrichedFacts}}
-      - Source URLs: {{source_urls}}
-      - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
-      - FAQ Data: {{faq}}
+      <<post_writing_template_blocks.plan_fields>>
 
-      [System Structure Note] The H1 title is auto-rendered by Hugo from the `title:` field in the front-matter, so you MUST NOT write any `# ...` (H1) line in your markdown output — not even once, not even as a decorative opener. Writing `# Anything` at the top of the body will cause a duplicated title on the page and is a critical formatting error. Instead, begin your markdown with a plain-text [Intro Paragraph] (no heading marker) that bridges the auto-rendered title and the first H2. This intro must carry an unexpected hook and a 2–3 sentence BLUF that contains {{coreFact}}. Only AFTER the intro paragraph(s) are complete, start the main body with `## ` (H2) subheadings.
+      <<post_writing_template_blocks.system_structure_note>>
 
   post_writing_guide:
     persona: "The tone of a practical senior who strips complexity and gives clean step-by-step execution guidance. (But never self-reference as 'your senior', 'I', or perform first-person roleplay dialogue. Prove helpfulness through efficient information architecture and readability, not staged conversation.)"
@@ -431,13 +467,7 @@ tasks:
       Let a reader with "{{searchIntent}}" complete the task using this post alone,
       by turning uncertainty into clear, executable steps.
 
-      [Trust Anchors — must appear in the body]
-      ① enrichedFacts (verified facts): {{enrichedFacts}}
-         → Use externally verified numbers, dates, and institution names as-is.
-      ② coreFact (planning fact): {{coreFact}}
-         → Use when ① is missing in a section. Never invent numbers outside it.
-      ③ If both are weak or empty:
-         → Write with official names, institutions, and dates; skip numeric claims.
+      <<post_writing_template_blocks.trust_anchor>>
 
       [What the reader likely already knows — SKIP or keep to 1 sentence]
       The part in {{serpDifferentiation}} that corresponds to "what existing top posts already cover"
@@ -445,30 +475,9 @@ tasks:
       [Information gap this post must fill — primary H2 topic]
       The part in {{serpDifferentiation}} that corresponds to "what this post should focus on"
 
-      [Post Plan]
-      - Category: {{category}}
-      - Keyword: {{mainKeyword}}
-      - Search Intent: {{searchIntent}}
-      - Target Audience: {{targetAudience}}
-      - Depth/Conclusion: {{contentDepth}} / {{conclusionType}}
-      - Lifecycle: {{lifecycle}}
-      - Shoppable Product: {{shoppableKeyword}}
-      - Core Fact: {{coreFact}}
-      - Entities: {{coreEntities}}
-      - Sub-topics: {{subTopics}}
-      - SEO Keywords: {{seoKeywords}}
-      - LSI Keywords: {{lsiKeywords}}
-      - Message: {{coreMessage}}
-      - SERP Differentiation: {{serpDifferentiation}}
-      - Information Gain Angle: {{infoGainAngle}}
-      - Format Structure (Dynamic Templating): {{outputFormat}}
-      - Searcher Colloquial Intent: {{searchBehaviorQueries}}
-      - Enriched Facts: {{enrichedFacts}}
-      - Source URLs: {{source_urls}}
-      - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
-      - FAQ Data: {{faq}}
+      <<post_writing_template_blocks.plan_fields>>
 
-      [System Structure Note] The H1 title is auto-rendered by Hugo from the `title:` field in the front-matter, so you MUST NOT write any `# ...` (H1) line in your markdown output — not even once, not even as a decorative opener. Writing `# Anything` at the top of the body will cause a duplicated title on the page and is a critical formatting error. Instead, begin your markdown with a plain-text [Intro Paragraph] (no heading marker) that bridges the auto-rendered title and the first H2. This intro must carry an unexpected hook and a 2–3 sentence BLUF that contains {{coreFact}}. Only AFTER the intro paragraph(s) are complete, start the main body with `## ` (H2) subheadings.
+      <<post_writing_template_blocks.system_structure_note>>
 
   post_writing_compare:
     persona: "The tone of a realistic, smart senior who cuts through overthinking and drives a clear decision. (But never self-reference as 'your senior', 'I', or perform first-person roleplay dialogue. Prove sharpness with strong comparison criteria and decisive conclusions, not staged lines.)"
@@ -488,13 +497,7 @@ tasks:
       Give a reader with "{{searchIntent}}" a clear, confident decision,
       so they do not need one more search loop.
 
-      [Trust Anchors — must appear in the body]
-      ① enrichedFacts (verified facts): {{enrichedFacts}}
-         → Use externally verified numbers, dates, and institution names as-is.
-      ② coreFact (planning fact): {{coreFact}}
-         → Use when ① is missing in a section. Never invent numbers outside it.
-      ③ If both are weak or empty:
-         → Write with official names, institutions, and dates; skip numeric claims.
+      <<post_writing_template_blocks.trust_anchor>>
 
       [What the reader likely already knows — SKIP or keep to 1 sentence]
       The part in {{serpDifferentiation}} that corresponds to "what existing top posts already cover"
@@ -502,27 +505,6 @@ tasks:
       [Information gap this post must fill — primary H2 topic]
       The part in {{serpDifferentiation}} that corresponds to "what this post should focus on"
 
-      [Post Plan]
-      - Category: {{category}}
-      - Keyword: {{mainKeyword}}
-      - Search Intent: {{searchIntent}}
-      - Target Audience: {{targetAudience}}
-      - Depth/Conclusion: {{contentDepth}} / {{conclusionType}}
-      - Lifecycle: {{lifecycle}}
-      - Shoppable Product: {{shoppableKeyword}}
-      - Core Fact: {{coreFact}}
-      - Entities: {{coreEntities}}
-      - Sub-topics: {{subTopics}}
-      - SEO Keywords: {{seoKeywords}}
-      - LSI Keywords: {{lsiKeywords}}
-      - Message: {{coreMessage}}
-      - SERP Differentiation: {{serpDifferentiation}}
-      - Information Gain Angle: {{infoGainAngle}}
-      - Format Structure (Dynamic Templating): {{outputFormat}}
-      - Searcher Colloquial Intent: {{searchBehaviorQueries}}
-      - Enriched Facts: {{enrichedFacts}}
-      - Source URLs: {{source_urls}}
-      - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
-      - FAQ Data: {{faq}}
+      <<post_writing_template_blocks.plan_fields>>
 
-      [System Structure Note] The H1 title is auto-rendered by Hugo from the `title:` field in the front-matter, so you MUST NOT write any `# ...` (H1) line in your markdown output — not even once, not even as a decorative opener. Writing `# Anything` at the top of the body will cause a duplicated title on the page and is a critical formatting error. Instead, begin your markdown with a plain-text [Intro Paragraph] (no heading marker) that bridges the auto-rendered title and the first H2. This intro must carry an unexpected hook and a 2–3 sentence BLUF that contains {{coreFact}}. Only AFTER the intro paragraph(s) are complete, start the main body with `## ` (H2) subheadings.
+      <<post_writing_template_blocks.system_structure_note>>

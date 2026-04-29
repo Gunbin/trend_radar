@@ -12,6 +12,8 @@ let APP_CONFIG = {
     },
     // [v2.6] 실시간 검색(Grounding)은 기본 OFF. 설정 모달에서 on 시 수동 활성화.
     useSearch: false,
+    // [v3.3] Burst 주제 하드필터 기본 ON (명시적으로 끌 때만 false)
+    burstHardFilterEnabled: true,
     topicCount: 3,
     itemScale: 1.0,
     region: 'KR'
@@ -54,6 +56,9 @@ function loadSettings() {
             APP_CONFIG.itemScale = [0.5, 1.0, 1.5].includes(parsed.itemScale) ? parsed.itemScale : APP_CONFIG.itemScale;
             APP_CONFIG.region = parsed.region || APP_CONFIG.region;
             APP_CONFIG.useSearch = parsed.hasOwnProperty('useSearch') ? parsed.useSearch : APP_CONFIG.useSearch;
+            APP_CONFIG.burstHardFilterEnabled = parsed.hasOwnProperty('burstHardFilterEnabled')
+                ? parsed.burstHardFilterEnabled
+                : APP_CONFIG.burstHardFilterEnabled;
         } catch (e) {
             console.error('Failed to parse settings', e);
         }
@@ -81,6 +86,8 @@ function syncUIToSettings() {
     document.getElementById('src-buzzfeed').checked = APP_CONFIG.sources.US.buzzfeed !== false;
 
     document.getElementById('cfg-use-search').checked = APP_CONFIG.useSearch;
+    const cfgBurstHardFilter = document.getElementById('cfg-burst-hard-filter');
+    if (cfgBurstHardFilter) cfgBurstHardFilter.checked = APP_CONFIG.burstHardFilterEnabled !== false;
     document.getElementById('cfg-topics').value = APP_CONFIG.topicCount;
     document.getElementById('cfg-item-scale').value = APP_CONFIG.itemScale;
     updateItemScaleHint(APP_CONFIG.itemScale);
@@ -114,6 +121,8 @@ function saveSettings() {
     APP_CONFIG.sources.US.buzzfeed = document.getElementById('src-buzzfeed').checked;
 
     APP_CONFIG.useSearch = document.getElementById('cfg-use-search').checked;
+    const cfgBurstHardFilter = document.getElementById('cfg-burst-hard-filter');
+    APP_CONFIG.burstHardFilterEnabled = cfgBurstHardFilter ? cfgBurstHardFilter.checked : true;
     APP_CONFIG.topicCount = parseInt(document.getElementById('cfg-topics').value);
     APP_CONFIG.itemScale = parseFloat(document.getElementById('cfg-item-scale').value) || 1.0;
     const cfgRefreshDays = document.getElementById('cfg-refresh-days');
@@ -569,7 +578,8 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
                 trends: currentTrendsData,
                 config: { 
                     topicCount: APP_CONFIG.topicCount,
-                    useSearch: APP_CONFIG.useSearch 
+                    useSearch: APP_CONFIG.useSearch,
+                    burstHardFilterEnabled: APP_CONFIG.burstHardFilterEnabled
                 },
                 region: APP_CONFIG.region || 'KR'
             })
@@ -645,7 +655,8 @@ document.getElementById('manual-analyze-btn').addEventListener('click', async ()
                 manualText: manualText,
                 config: { 
                     topicCount: APP_CONFIG.topicCount,
-                    useSearch: APP_CONFIG.useSearch
+                    useSearch: APP_CONFIG.useSearch,
+                    burstHardFilterEnabled: APP_CONFIG.burstHardFilterEnabled
                 },
                 region: APP_CONFIG.region || 'KR'
             })
@@ -680,6 +691,14 @@ function esc(s) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+function isBlueOceanIndex(ci) {
+    return typeof ci === 'number' && ci < 0.5;
+}
+
+function formatCompetitionIndex(ci) {
+    return typeof ci === 'number' ? ci : '-';
+}
+
 function renderAIAnalysis(data) {
     const aiContent = document.getElementById('ai-content');
 
@@ -691,7 +710,7 @@ function renderAIAnalysis(data) {
                 <td>${esc(kw)}</td>
                 <td>${d.searchVolume.toLocaleString()}</td>
                 <td>${d.documentCount.toLocaleString()}</td>
-                <td class="${d.competitionIndex < 0.5 ? 'blue-ocean-text' : ''}">${d.competitionIndex}</td>
+                <td class="${isBlueOceanIndex(d.competitionIndex) ? 'blue-ocean-text' : ''}">${formatCompetitionIndex(d.competitionIndex)}</td>
             </tr>
         `).join('');
         
@@ -805,9 +824,9 @@ function renderAIAnalysis(data) {
                     <span class="m-label">DOCS:</span>
                     <span class="m-value">${(post.documentCount || 0).toLocaleString()}</span>
                 </div>
-                <div class="metric-item ${post.competitionIndex < 0.5 ? 'blue-ocean' : ''}" title="경쟁 지수 — 0.5 미만이면 블루오션">
+                <div class="metric-item ${isBlueOceanIndex(post.competitionIndex) ? 'blue-ocean' : ''}" title="경쟁 지수 — 0.5 미만 블루오션, 값이 없으면 '-'">
                     <span class="m-label">COMP:</span>
-                    <span class="m-value">${post.competitionIndex}</span>
+                    <span class="m-value">${formatCompetitionIndex(post.competitionIndex)}</span>
                 </div>
                </div>`
             : '';
@@ -864,6 +883,7 @@ function renderAIAnalysis(data) {
                     <div class="meta-item"><span>CORE_ENTITIES:</span> ${(Array.isArray(post.coreEntities) ? post.coreEntities : []).map(esc).join(', ')}</div>
                     <div class="meta-item"><span>SEO_KEYWORDS:</span> ${(post.seoKeywords || []).map(esc).join(', ')}</div>
                     ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).map(esc).join(', ')}</div>` : ''}
+                    <div class="meta-item"><span>NEWS_QUERY:</span> ${esc(post.newsSearchQuery || 'N/A')}</div>
                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${esc(post.coreMessage)}</div>
                     ${sourceUrlsHtml}
                 </div>
@@ -1065,7 +1085,8 @@ document.getElementById('preview-analysis-btn').addEventListener('click', async 
         manualText: currentManualText,
         config: {
             topicCount: APP_CONFIG.topicCount,
-            useSearch: APP_CONFIG.useSearch
+            useSearch: APP_CONFIG.useSearch,
+            burstHardFilterEnabled: APP_CONFIG.burstHardFilterEnabled
         },
         region: APP_CONFIG.region || 'KR'
     }, 'PLANNING_PROMPT');

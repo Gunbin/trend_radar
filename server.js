@@ -73,6 +73,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     category: { type: "string", enum: ["Tech and IT", "Finance", "Life and Health", "Entertainment"] },
                     targetKeyword: { type: "string" },
                     mainKeyword: { type: "string" },
+                    newsSearchQuery: { type: "string" },
                     angleType: { type: "string", enum: ["expose", "guide", "compare"] },
                     searchIntent: { type: "string" },
                     // KR: "Snack", EN: "Bite-sized" — 두 값 모두 허용 (downstream 은 단순 문자열로만 사용)
@@ -127,7 +128,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     sourceUrls: { type: "array", items: { type: "string" } }
                 },
                 required: [
-                    "trafficStrategy", "category", "targetKeyword", "mainKeyword", "angleType", "searchIntent",
+                    "trafficStrategy", "category", "targetKeyword", "mainKeyword", "newsSearchQuery", "angleType", "searchIntent",
                     "contentDepth", "conclusionType", "coreFact", "viralTitles", "metaDescription",
                     "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "lsiKeywords",
                     "imageSearchKeywords", "coreMessage", "painScore", "serpDifferentiation", 
@@ -185,9 +186,10 @@ function calcSeoViabilityScore(searchVolume, competitionIndex, documentCount) {
 }
 
 // [v2.9] 기획안 품질 분류 — 하드게이트 + seoViabilityScore 기반 태깅
-function annotateAnalysisPriority(analysisResult) {
+function annotateAnalysisPriority(analysisResult, options = {}) {
     if (!analysisResult || !Array.isArray(analysisResult.blogPosts)) return analysisResult;
     const COMPETITION_HARD_LIMIT = 3.0;
+    const burstHardFilterEnabled = options?.burstHardFilterEnabled !== false;
 
     for (const post of analysisResult.blogPosts) {
         const painScore = Number.isInteger(post.painScore) ? post.painScore : null;
@@ -206,6 +208,10 @@ function annotateAnalysisPriority(analysisResult) {
             priority = 'review';
             reason = '⚠️ 검색량 0 — 실제 유입 불가 키워드';
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — searchVolume=0 review 강등`);
+        } else if (burstHardFilterEnabled && post.trafficStrategy?.lifecycle === 'Burst') {
+            priority = 'review';
+            reason = '🚫 Burst — 신생 블로그 노출 지연으로 자동 제외';
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — Burst 하드필터로 review 강등`);
         } else if (painScore === null && confidence === null) {
             priority = 'review';
             reason = 'painScore/queryConfidence 누락';
@@ -213,18 +219,18 @@ function annotateAnalysisPriority(analysisResult) {
             priority = 'review';
             reason = 'queryConfidence=Low';
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — queryConfidence=Low`);
+        } else if (compIdx !== null && compIdx > COMPETITION_HARD_LIMIT) {
+            if (seoViabilityScore >= 7) {
+                priority = 'secondary';
+                reason = `⚠️ 경쟁 과열 선행 차단 (competitionIndex ${compIdx})`;
+            } else {
+                priority = 'review';
+                reason = `⚠️ 경쟁 과열 선행 차단 + 생존점수 낮음 (competitionIndex ${compIdx}, seoViabilityScore ${seoViabilityScore})`;
+            }
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — 경쟁률 과열로 ${priority} 분류`);
         } else if (seoViabilityScore >= 8 && (confidence === 'High' || confidence === 'Medium' || confidence === null)) {
             priority = 'primary';
             reason = `✅ SEO 생존 점수 우수 (seoViabilityScore ${seoViabilityScore})`;
-        } else if (compIdx !== null && compIdx > COMPETITION_HARD_LIMIT) {
-            if (seoViabilityScore < 5) {
-                priority = 'review';
-                reason = `⚠️ 경쟁률 과열 + 생존점수 낮음 (competitionIndex ${compIdx}, seoViabilityScore ${seoViabilityScore})`;
-            } else {
-                priority = 'secondary';
-                reason = `⚠️ 경쟁률 과열 (competitionIndex ${compIdx} > ${COMPETITION_HARD_LIMIT})`;
-            }
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — 경쟁률 과열로 ${priority} 분류`);
         } else if (seoViabilityScore >= 5) {
             priority = 'secondary';
             reason = `ℹ️ SEO 생존 점수 보통 (seoViabilityScore ${seoViabilityScore})`;
@@ -1165,9 +1171,25 @@ function getSourceLimit(sourceName, itemScale = 1.0) {
 function formatMetricsLine(kw, data, lang = 'ko') {
   const suggestions = (data.suggestions || []).join(', ') || (lang === 'en' ? 'none' : '없음');
   if (lang === 'en') {
-    return `- keyword: ${kw} / searchVolume: ${data.searchVolume} / documentCount: ${data.documentCount} / competitionIndex: ${data.competitionIndex} / relatedQueries(reference): ${suggestions}`;
+    return `- keyword: ${kw} / searchVolume: ${data.searchVolume} / documentCount: ${data.documentCount} / competitionIndex: ${data.competitionIndex} / competitionLabel: ${data.competitionLabel || '⚪ Unmeasurable'} / relatedQueries(reference): ${suggestions}`;
   }
-  return `- 키워드: ${kw} / 월간검색량: ${data.searchVolume} / 발행문서수: ${data.documentCount} / 경쟁지수: ${data.competitionIndex} / 연관검색어(참고): ${suggestions}`;
+  return `- 키워드: ${kw} / 월간검색량: ${data.searchVolume} / 발행문서수: ${data.documentCount} / 경쟁지수: ${data.competitionIndex} / 경쟁강도: ${data.competitionLabel || '⚪ 측정불가'} / 연관검색어(참고): ${suggestions}`;
+}
+
+function attachCompetitionLabel(metric, lang = 'ko') {
+  const idx = typeof metric?.competitionIndex === 'number' ? metric.competitionIndex : null;
+  const sv = typeof metric?.searchVolume === 'number' ? metric.searchVolume : 0;
+
+  if (idx === null || sv === 0) {
+    metric.competitionLabel = lang === 'en' ? '⚪ Unmeasurable' : '⚪ 측정불가';
+  } else if (idx < 0.5) {
+    metric.competitionLabel = lang === 'en' ? '🟢 Blue Ocean' : '🟢 블루오션';
+  } else if (idx < 2.0) {
+    metric.competitionLabel = lang === 'en' ? '🟡 Moderate' : '🟡 경쟁보통';
+  } else {
+    metric.competitionLabel = lang === 'en' ? '🔴 Red Ocean' : '🔴 레드오션';
+  }
+  return metric;
 }
 
 // 1. Google Trends (US 전용)
@@ -1728,7 +1750,8 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
 
     const metrics = {};
 
-    for (const chunk of kChunks) {
+    for (let i = 0; i < kChunks.length; i++) {
+        const chunk = kChunks[i];
         try {
             // [Fix] 네이버 검색광고 API는 키워드 내 공백(띄어쓰기)을 절대 허용하지 않음 (Invalid Parameter 오류 방지)
             //       단, 공백 포함 원본 키워드는 토큰으로 분리(expandKeywordsForMetrics)해두었으므로
@@ -1737,17 +1760,31 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
             if (sanitizedChunk.length === 0) continue;
 
             const uri = '/keywordstool';
-            const { timestamp, hash } = generateSearchAdSignature('GET', uri, secretKey, license);
-            
-            const res = await axios.get(`https://api.searchad.naver.com${uri}`, {
-                params: { hintKeywords: sanitizedChunk.join(','), showDetail: '1' },
-                headers: {
-                    'X-Timestamp': timestamp,
-                    'X-API-KEY': license,
-                    'X-Customer': customerId,
-                    'X-Signature': hash
+            const requestSearchAdChunk = async () => {
+                const { timestamp, hash } = generateSearchAdSignature('GET', uri, secretKey, license);
+                return axios.get(`https://api.searchad.naver.com${uri}`, {
+                    params: { hintKeywords: sanitizedChunk.join(','), showDetail: '1' },
+                    headers: {
+                        'X-Timestamp': timestamp,
+                        'X-API-KEY': license,
+                        'X-Customer': customerId,
+                        'X-Signature': hash
+                    }
+                });
+            };
+
+            let res;
+            try {
+                res = await requestSearchAdChunk();
+            } catch (firstErr) {
+                if (firstErr?.response?.status === 429) {
+                    logger.warn(`[Metrics] SearchAd 429 on chunk ${i + 1}/${kChunks.length}. Retrying after 1500ms...`);
+                    await new Promise(r => setTimeout(r, 1500));
+                    res = await requestSearchAdChunk();
+                } else {
+                    throw firstErr;
                 }
-            });
+            }
 
             if (res.data && res.data.keywordList) {
                 res.data.keywordList.forEach(item => {
@@ -1761,7 +1798,12 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
                 });
             }
         } catch (e) {
-            logger.error(`[Metrics] SearchAd API Error: ${e.response?.data?.message || e.message}`);
+            logger.error(`[Metrics] SearchAd API Error (chunk ${i + 1}/${kChunks.length}): ${e.response?.data?.message || e.message}`);
+        } finally {
+            if (i < kChunks.length - 1) {
+                const jitterMs = Math.floor(Math.random() * 300);
+                await new Promise(r => setTimeout(r, 1500 + jitterMs));
+            }
         }
     }
 
@@ -1798,7 +1840,7 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
         } catch (e) {
             logger.warn(`[Metrics] Naver Search API Error for "${targetKw}": ${e.message}`);
             originalMetrics[targetKw].documentCount = 0;
-            originalMetrics[targetKw].competitionIndex = 0;
+            originalMetrics[targetKw].competitionIndex = null;
         }
     }
 
@@ -1830,6 +1872,23 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
         if (bestVol > 0) {
             base.searchVolume = bestVol;
             base._resolvedFrom = bestPart;
+
+            // [v3.3] 토큰 보완 시 documentCount도 동일 토큰 기준으로 동기화
+            try {
+                const tokenBlogRes = await axios.get('https://openapi.naver.com/v1/search/blog.json', {
+                    params: { query: bestPart, display: 1 },
+                    headers: {
+                        'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+                        'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
+                    }
+                });
+                if (typeof tokenBlogRes.data?.total === 'number') {
+                    base.documentCount = tokenBlogRes.data.total;
+                }
+            } catch (e) {
+                logger.warn(`[Metrics] Token documentCount sync failed for "${bestPart}": ${e.message}`);
+            }
+
             const vol = bestVol || 1;
             base.competitionIndex = parseFloat(((base.documentCount || 0) / vol).toFixed(2));
             logger.process(`[Metrics] "${kw}" → token "${bestPart}"로 검색량 보완: ${bestVol}`);
@@ -1846,6 +1905,7 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
 
     Object.keys(originalMetrics).forEach((kw) => {
       originalMetrics[kw].suggestions = suggestionsMap[kw] || [];
+      attachCompetitionLabel(originalMetrics[kw], lang);
     });
 
     return originalMetrics;
@@ -1881,9 +1941,15 @@ async function getGoogleSuggestions(keyword, lang = 'ko', country = 'KR') {
   try {
     const res = await axios.get('http://suggestqueries.google.com/complete/search', {
       params: { client: 'chrome', q: keyword, hl: lang, gl: country },
+      responseType: 'arraybuffer',
       timeout: 3000
     });
-    return Array.isArray(res.data?.[1]) ? res.data[1].slice(0, 5) : [];
+
+    const contentType = String(res.headers?.['content-type'] || '').toLowerCase();
+    const charset = contentType.includes('euc-kr') ? 'euc-kr' : 'utf8';
+    const decoded = iconv.decode(Buffer.from(res.data), charset);
+    const parsed = JSON.parse(decoded);
+    return Array.isArray(parsed?.[1]) ? parsed[1].slice(0, 5) : [];
   } catch (_e) {
     return [];
   }
@@ -2181,7 +2247,9 @@ app.post('/api/analyze', async (req, res) => {
         const parsed = JSON.parse(text);
         // [v3.0] 실측 metrics 덮어쓰기 → 그 다음 priority 태깅
         const patched = applyMeasuredMetricsToAnalysis(parsed, measuredMetrics);
-        const analysisJson = annotateAnalysisPriority(patched);
+        const analysisJson = annotateAnalysisPriority(patched, {
+            burstHardFilterEnabled: config?.burstHardFilterEnabled !== false
+        });
         const PRIORITY_ORDER = { primary: 0, secondary: 1, review: 2 };
         if (Array.isArray(analysisJson.blogPosts)) {
             analysisJson.blogPosts.sort((a, b) => {
@@ -2298,7 +2366,7 @@ async function searchNewsAPI(query) {
 
 async function enrichPostPlan(postPlan, region = 'KR') {
     try {
-        const searchBase = postPlan.targetKeyword || postPlan.mainKeyword;
+        const searchBase = postPlan.newsSearchQuery || postPlan.targetKeyword || postPlan.mainKeyword;
         const entities = (postPlan.coreEntities || []).slice(0, 2).join(' ');
         const query = `${searchBase} ${entities}`.trim().slice(0, 50);
         

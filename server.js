@@ -1930,6 +1930,155 @@ async function extractSearchKeywords(trendsData, lang) {
     return [];
 }
 
+function buildKeywordExtractionPromptInput({ trends, manualText, region = 'KR' }) {
+    const lang = region === 'US' ? 'en' : 'ko';
+    const trendsPayload = manualText ? { text: manualText } : (trends || {});
+    const prompt = promptManager.getPrompt('keyword_extraction', lang, {
+        trends_data: JSON.stringify(trendsPayload)
+    });
+    return { prompt, lang, trendsPayload };
+}
+
+async function buildAnalysisPromptInput({ trends, manualText, config, region = 'KR' }) {
+    const topicCount = config?.topicCount || 3;
+    const lang = region === 'US' ? 'en' : 'ko';
+    let metricsContext = '';
+    let measuredMetrics = {};
+    let searchTerms = [];
+
+    const trendsPayload = manualText ? { text: manualText } : trends;
+    searchTerms = await extractSearchKeywords(trendsPayload, lang);
+    if (searchTerms.length > 0) {
+        const suggestLang = region === 'US' ? 'en' : 'ko';
+        const suggestCountry = region === 'US' ? 'US' : 'KR';
+        measuredMetrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
+        metricsContext = Object.entries(measuredMetrics).map(([kw, data]) =>
+            formatMetricsLine(kw, data, lang)
+        ).join('\n');
+    }
+
+    let prompt;
+    if (manualText) {
+        prompt = promptManager.getPrompt('manual_analysis', lang, {
+            manual_text: manualText,
+            topic_count: topicCount,
+            metrics_data: metricsContext
+        });
+    } else {
+        prompt = promptManager.getPrompt('trend_analysis', lang, {
+            trends_data: JSON.stringify(trends),
+            topic_count: topicCount,
+            metrics_data: metricsContext
+        });
+    }
+    prompt += buildRecentKeywordsContext(lang);
+
+    return {
+        prompt,
+        lang,
+        topicCount,
+        metricsContext,
+        measuredMetrics,
+        searchTerms
+    };
+}
+
+async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
+    const lang = region === 'US' ? 'en' : 'ko';
+    const postPlan = await enrichPostPlan(rawPostPlan, region);
+    const tags = buildExpandedTags(postPlan);
+    const rawAngle = String(postPlan.angleType || DEFAULT_ANGLE).toLowerCase().trim();
+    const angle = ALLOWED_ANGLES.has(rawAngle) ? rawAngle : DEFAULT_ANGLE;
+    if (angle !== rawAngle) {
+        logger.warn(`[Post Gen] Invalid angleType "${postPlan.angleType}" → fallback to "${angle}"`);
+    }
+    const promptKey = `post_writing_${angle}`;
+
+    const prompt = promptManager.getPrompt(promptKey, lang, {
+        mainKeyword: postPlan.mainKeyword,
+        searchIntent: postPlan.searchIntent,
+        contentDepth: postPlan.contentDepth || 'Normal',
+        conclusionType: postPlan.conclusionType || 'Q&A',
+        coreFact: postPlan.coreFact || '[팩트 없음 — 수치·통계 창작 절대 금지. 기획안에 제공된 키워드와 맥락만 활용할 것]',
+        coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
+        subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
+        seoKeywords: tags.join(', '),
+        lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
+        coreMessage: postPlan.coreMessage,
+        serpDifferentiation: postPlan.serpDifferentiation || '',
+        lifecycle: postPlan.trafficStrategy?.lifecycle || '',
+        category: postPlan.category || '',
+        shoppableKeyword: postPlan.shoppableKeyword || '',
+        faq: Array.isArray(postPlan.faq) ? postPlan.faq.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n\n') : '',
+        metaDescription: postPlan.metaDescription || '',
+        targetAudience: postPlan?.trafficStrategy?.targetAudience || postPlan?.targetAudience || '일반 독자',
+        searchBehaviorQueries: Array.isArray(postPlan.searchBehaviorQueries) ? postPlan.searchBehaviorQueries.join('\n') : '',
+        infoGainAngle: postPlan.infoGainAngle ? `[차별화 앵글: ${postPlan.infoGainAngle.type}]\n${postPlan.infoGainAngle.description}` : '',
+        source_urls: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.sourceUrls) && postPlan.enrichedFacts.sourceUrls.length > 0)
+            ? postPlan.enrichedFacts.sourceUrls.join('\n')
+            : (Array.isArray(postPlan.sourceUrls) ? postPlan.sourceUrls.join('\n') : ''),
+        enrichedFacts: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.facts) && postPlan.enrichedFacts.facts.length > 0)
+            ? postPlan.enrichedFacts.facts.map((f, i) => `${i + 1}. ${f}`).join('\n')
+            : '',
+        outputFormat: FORMAT_MAP[`${angle}-${postPlan.contentDepth}`] || '',
+        context_url_1: "IMAGE_PLACEHOLDER_1",
+        context_url_2: "IMAGE_PLACEHOLDER_2",
+        context_url_3: "IMAGE_PLACEHOLDER_3"
+    });
+
+    return { prompt, postPlan, tags, angle, promptKey, lang };
+}
+
+app.post('/api/debug/prompt-preview', async (req, res) => {
+    try {
+        const { stage, trends, manualText, config, region = 'KR', postPlan } = req.body || {};
+        if (!stage) return res.status(400).json({ error: 'stage is required' });
+
+        if (stage === 'keyword_extraction') {
+            const built = buildKeywordExtractionPromptInput({ trends, manualText, region });
+            return res.json({
+                stage,
+                prompt: built.prompt,
+                meta: { lang: built.lang }
+            });
+        }
+
+        if (stage === 'analysis') {
+            const built = await buildAnalysisPromptInput({ trends, manualText, config, region });
+            return res.json({
+                stage,
+                prompt: built.prompt,
+                meta: {
+                    lang: built.lang,
+                    topicCount: built.topicCount,
+                    searchTerms: built.searchTerms,
+                    metricsLines: built.metricsContext ? built.metricsContext.split('\n').length : 0
+                }
+            });
+        }
+
+        if (stage === 'post_generation') {
+            if (!postPlan) return res.status(400).json({ error: 'postPlan is required for post_generation preview' });
+            const built = await buildPostGenerationPromptInput({ rawPostPlan: postPlan, region });
+            return res.json({
+                stage,
+                prompt: built.prompt,
+                meta: {
+                    lang: built.lang,
+                    angle: built.angle,
+                    promptKey: built.promptKey,
+                    tagsCount: built.tags.length
+                }
+            });
+        }
+
+        return res.status(400).json({ error: `Unsupported stage: ${stage}` });
+    } catch (error) {
+        logger.error('[Prompt Preview] Failed', error.message);
+        return res.status(500).json({ error: 'prompt preview failed', details: error.message });
+    }
+});
+
 app.post('/api/analyze', async (req, res) => {
   const { trends, manualText, config, region = 'KR' } = req.body;
   const topicCount = config?.topicCount || 3;
@@ -1937,22 +2086,28 @@ app.post('/api/analyze', async (req, res) => {
   const lang = region === 'US' ? 'en' : 'ko';
 
   // [Step 1 & 2] 네이버 데이터 기반 블루오션 필터링 레이어
-  let metricsContext = "";
   let measuredMetrics = {};
+  let analysisPrompt = '';
   try {
-      // 영미권도 일단은 네이버 API를 사용하도록 작업 (추후 분리 용이하게)
-      const searchTerms = await extractSearchKeywords(manualText ? { text: manualText } : trends, lang);
-      if (searchTerms.length > 0) {
-          const suggestLang = region === 'US' ? 'en' : 'ko';
-          const suggestCountry = region === 'US' ? 'US' : 'KR';
-          measuredMetrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
-          metricsContext = Object.entries(measuredMetrics).map(([kw, data]) => 
-              formatMetricsLine(kw, data, lang)
-          ).join('\n');
-          logger.success(`[Analysis] Successfully gathered metrics for ${searchTerms.length} terms.`);
-      }
+      const built = await buildAnalysisPromptInput({ trends, manualText, config, region });
+      measuredMetrics = built.measuredMetrics;
+      analysisPrompt = built.prompt;
+      logger.success(`[Analysis] Successfully gathered metrics for ${built.searchTerms.length} terms.`);
   } catch (e) {
       logger.warn(`[Analysis] Blue-ocean metrics gathering failed: ${e.message}`);
+  }
+  if (!analysisPrompt) {
+      analysisPrompt = manualText
+          ? promptManager.getPrompt('manual_analysis', lang, {
+              manual_text: manualText,
+              topic_count: topicCount,
+              metrics_data: ''
+            }) + buildRecentKeywordsContext(lang)
+          : promptManager.getPrompt('trend_analysis', lang, {
+              trends_data: JSON.stringify(trends),
+              topic_count: topicCount,
+              metrics_data: ''
+            }) + buildRecentKeywordsContext(lang);
   }
 
   const modelsToTry = await getBestModels();
@@ -2005,22 +2160,7 @@ app.post('/api/analyze', async (req, res) => {
             generationConfig
         });
 
-        let prompt;
-        if (manualText) {
-            prompt = promptManager.getPrompt('manual_analysis', lang, {
-              manual_text: manualText,
-              topic_count: topicCount,
-              metrics_data: metricsContext
-            });
-        } else {
-            prompt = promptManager.getPrompt('trend_analysis', lang, {
-              trends_data: JSON.stringify(trends),
-              topic_count: topicCount,
-              metrics_data: metricsContext
-            });
-        }
-        // [v2.4] 카니발 방지: 최근 30일 발행 키워드를 negative context로 주입
-        prompt += buildRecentKeywordsContext(lang);
+        const prompt = analysisPrompt;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
@@ -2258,13 +2398,7 @@ async function enrichPostPlan(postPlan, region = 'KR') {
 app.post('/api/generate-post', async (req, res) => {
   // [v2.6] useSearch 기본값 false (opt-in). 클라이언트에서 명시적으로 true 를 넘길 때만 Grounding 활성화.
   const { postPlan: rawPostPlan, region = 'KR', useSearch = false } = req.body;
-  const lang = region === 'US' ? 'en' : 'ko';
-  
-  // Fact Enrichment Layer 적용
-  const postPlan = await enrichPostPlan(rawPostPlan, region);
-
-  // [v2.4] 태그 자동 확장: mainKeyword + seoKeywords + lsi + coreEntities → 4~8개
-  const tags = buildExpandedTags(postPlan);
+  const { prompt: prebuiltPrompt, postPlan, tags, angle, lang } = await buildPostGenerationPromptInput({ rawPostPlan, region });
 
   const modelsToTry = await getBestModels();
   
@@ -2310,49 +2444,7 @@ app.post('/api/generate-post', async (req, res) => {
         
         // [가드] AI가 'Expose', 'expose/guide', 'expose (폭로)' 등 enum 외 값을 돌려줄 경우
         //        `post_writing_${angle}` task 조회 실패 → 본문 생성 전체 크래시 방지
-        const rawAngle = String(postPlan.angleType || DEFAULT_ANGLE).toLowerCase().trim();
-        const angle = ALLOWED_ANGLES.has(rawAngle) ? rawAngle : DEFAULT_ANGLE;
-        if (angle !== rawAngle) {
-          logger.warn(`[Post Gen] Invalid angleType "${postPlan.angleType}" → fallback to "${angle}"`);
-        }
-        const promptKey = `post_writing_${angle}`;
-
-        const prompt = promptManager.getPrompt(promptKey, lang, {
-          mainKeyword: postPlan.mainKeyword,
-          searchIntent: postPlan.searchIntent,
-          contentDepth: postPlan.contentDepth || 'Normal',
-          conclusionType: postPlan.conclusionType || 'Q&A',
-          coreFact: postPlan.coreFact || '[팩트 없음 — 수치·통계 창작 절대 금지. 기획안에 제공된 키워드와 맥락만 활용할 것]',
-          coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
-          subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
-          seoKeywords: tags.join(', '),
-          lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
-          coreMessage: postPlan.coreMessage,
-          // [v2.7] 기획 단계에서 뽑은 "정보 격차" — 도입부에서 뻔한 설명 생략하고 먼저 때리는 용도
-          //        비어 있어도 안전 (프롬프트 규칙 자체가 '값 없으면 무시'하도록 작성됨)
-          serpDifferentiation: postPlan.serpDifferentiation || '',
-          // 기획 단계 누락 정보 전달 (오류 수정)
-          lifecycle: postPlan.trafficStrategy?.lifecycle || '',
-          category: postPlan.category || '',
-          shoppableKeyword: postPlan.shoppableKeyword || '',
-          faq: Array.isArray(postPlan.faq) ? postPlan.faq.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n\n') : '',
-          metaDescription: postPlan.metaDescription || '',
-          // v2.4: trafficStrategy.targetAudience를 본문 프롬프트의 어휘/예시 톤 가이드로 활용 (없으면 안전한 기본값)
-          targetAudience: postPlan?.trafficStrategy?.targetAudience || postPlan?.targetAudience || '일반 독자',
-          searchBehaviorQueries: Array.isArray(postPlan.searchBehaviorQueries) ? postPlan.searchBehaviorQueries.join('\n') : '',
-          infoGainAngle: postPlan.infoGainAngle ? `[차별화 앵글: ${postPlan.infoGainAngle.type}]\n${postPlan.infoGainAngle.description}` : '',
-          source_urls: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.sourceUrls) && postPlan.enrichedFacts.sourceUrls.length > 0)
-              ? postPlan.enrichedFacts.sourceUrls.join('\n')
-              : (Array.isArray(postPlan.sourceUrls) ? postPlan.sourceUrls.join('\n') : ''),
-          enrichedFacts: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.facts) && postPlan.enrichedFacts.facts.length > 0)
-              ? postPlan.enrichedFacts.facts.map((f, i) => `${i + 1}. ${f}`).join('\n')
-              : '',
-          outputFormat: FORMAT_MAP[`${angle}-${postPlan.contentDepth}`] || '',
-          // 이미지 자리에 플레이스홀더 텍스트만 넣도록 유도하거나, 빈 URL 전달
-          context_url_1: "IMAGE_PLACEHOLDER_1",
-          context_url_2: "IMAGE_PLACEHOLDER_2",
-          context_url_3: "IMAGE_PLACEHOLDER_3"
-        });
+        const prompt = prebuiltPrompt;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;

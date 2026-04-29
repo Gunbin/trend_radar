@@ -1,6 +1,7 @@
 let timerInterval;
 let timeRemaining = 30000;
 let currentTrendsData = null;
+let currentManualText = '';
 let currentGeneratedMarkdown = null;
 let currentGeneratedIndexEntry = null;
 let APP_CONFIG = {
@@ -501,6 +502,29 @@ function renderList(elementId, items, templateFn) {
   container.innerHTML = items.map(templateFn).join('');
 }
 
+async function fetchPromptPreview(stage, payload, title) {
+    const modal = document.getElementById('prompt-modal');
+    const titleEl = document.getElementById('prompt-modal-title');
+    const contentEl = document.getElementById('prompt-modal-content');
+    titleEl.textContent = title || 'GEMINI_PROMPT_PREVIEW';
+    contentEl.textContent = 'LOADING PROMPT...';
+    modal.classList.remove('hidden');
+
+    try {
+        const res = await fetch('/api/debug/prompt-preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stage, ...payload })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'PREVIEW FAILED');
+        const metaText = data?.meta ? `/* ${JSON.stringify(data.meta, null, 2)} */\n\n` : '';
+        contentEl.textContent = `${metaText}${data.prompt || ''}`;
+    } catch (error) {
+        contentEl.textContent = `PROMPT PREVIEW FAILED:\n${error.message}`;
+    }
+}
+
 function startTimer() {
   const progressEl = document.getElementById('progress');
   const interval = APP_CONFIG.interval;
@@ -529,6 +553,7 @@ function resetTimer() {
 // AI Analysis Functionality
 document.getElementById('analyze-btn').addEventListener('click', async () => {
     if (!currentTrendsData) return;
+    currentManualText = '';
     
     const aiSection = document.getElementById('ai-section');
     const aiContent = document.getElementById('ai-content');
@@ -604,6 +629,7 @@ document.getElementById('manual-analyze-btn').addEventListener('click', async ()
     }
     
     document.getElementById('manual-modal').classList.add('hidden');
+    currentManualText = manualText;
     
     const aiSection = document.getElementById('ai-section');
     const aiContent = document.getElementById('ai-content');
@@ -841,9 +867,14 @@ function renderAIAnalysis(data) {
                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${esc(post.coreMessage)}</div>
                     ${sourceUrlsHtml}
                 </div>
-                <button class="write-btn" onclick='generateFullPost(${JSON.stringify(post).replace(/'/g, "&apos;")})'>
-                    WRITE_SEO_OPTIMIZED_POST
-                </button>
+                <div class="card-action-row">
+                    <button class="write-btn" onclick='generateFullPost(${JSON.stringify(post).replace(/'/g, "&apos;")})'>
+                        WRITE_SEO_OPTIMIZED_POST
+                    </button>
+                    <button class="preview-btn" onclick='previewPostPrompt(${JSON.stringify(post).replace(/'/g, "&apos;")})'>
+                        VIEW_POST_PROMPT
+                    </button>
+                </div>
             </div>
         </div>`;
     }).join('');
@@ -902,6 +933,14 @@ async function generateFullPost(postPlan) {
     } catch (error) {
         content.innerHTML = '<div class="error">FATAL ERROR: FAILED TO GENERATE CONTENT. CHECK SYSTEM LOGS.</div>';
     }
+}
+
+async function previewPostPrompt(postPlan) {
+    await fetchPromptPreview('post_generation', {
+        postPlan,
+        region: APP_CONFIG.region || 'KR',
+        useSearch: APP_CONFIG.useSearch
+    }, 'POST_GENERATION_PROMPT');
 }
 
 // Settings Modal Logic
@@ -1002,6 +1041,46 @@ document.getElementById('push-github-post').addEventListener('click', async () =
     
     btn.textContent = originalText;
     btn.disabled = false;
+});
+
+document.getElementById('preview-keyword-btn').addEventListener('click', async () => {
+    if (!currentTrendsData && !currentManualText) {
+        alert('먼저 트렌드를 불러오거나 수동 입력 분석을 실행해주세요.');
+        return;
+    }
+    await fetchPromptPreview('keyword_extraction', {
+        trends: currentTrendsData,
+        manualText: currentManualText,
+        region: APP_CONFIG.region || 'KR'
+    }, 'KEYWORD_EXTRACTION_PROMPT');
+});
+
+document.getElementById('preview-analysis-btn').addEventListener('click', async () => {
+    if (!currentTrendsData && !currentManualText) {
+        alert('먼저 트렌드를 불러오거나 수동 입력 분석을 실행해주세요.');
+        return;
+    }
+    await fetchPromptPreview('analysis', {
+        trends: currentTrendsData,
+        manualText: currentManualText,
+        config: {
+            topicCount: APP_CONFIG.topicCount,
+            useSearch: APP_CONFIG.useSearch
+        },
+        region: APP_CONFIG.region || 'KR'
+    }, 'PLANNING_PROMPT');
+});
+
+document.getElementById('close-prompt-btn').addEventListener('click', () => {
+    document.getElementById('prompt-modal').classList.add('hidden');
+});
+
+document.getElementById('copy-prompt-btn').addEventListener('click', () => {
+    const content = document.getElementById('prompt-modal-content').textContent || '';
+    if (!content) return;
+    navigator.clipboard.writeText(content).then(() => {
+        alert('PROMPT COPIED TO CLIPBOARD!');
+    });
 });
 
 document.querySelectorAll('.tab-btn').forEach(btn => {

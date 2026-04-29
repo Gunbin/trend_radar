@@ -15,14 +15,20 @@
       <h1 class="glitch" data-text="[ TREND-RADAR // v1.0.0 ]">[ TREND-RADAR // v1.0.0 ]</h1>
       <p class="status">SYS.STATUS: <span class="neon-text">ONLINE</span> // LAST_SYNC: <span id="last-update">--:--:--</span></p>
       <div class="header-actions">
-          <select id="region-select" class="settings-btn" style="appearance: none; outline: none; text-align: center; cursor: pointer;">
-              <option value="KR">REGION: KR</option>
-              <option value="US">REGION: US</option>
-          </select>
-          <button id="settings-btn" class="settings-btn">⚙ SETTINGS</button>
-          <button id="manual-btn" class="manual-input-btn">✎ MANUAL INPUT</button>
-          <button id="refresh-btn" class="ai-btn" style="background:#0ff; color:#000; padding: 0.5rem 1rem;">REFRESH POST</button>
-          <button id="analyze-btn" class="ai-btn">GENERATE AI INSIGHTS</button>
+          <div class="header-actions-row header-actions-row-top">
+              <select id="region-select" class="settings-btn" style="appearance: none; outline: none; text-align: center; cursor: pointer;">
+                  <option value="KR">REGION: KR</option>
+                  <option value="US">REGION: US</option>
+              </select>
+              <button id="settings-btn" class="settings-btn">⚙ SETTINGS</button>
+              <button id="preview-keyword-btn" class="preview-btn">🔎 KEYWORD PROMPT</button>
+              <button id="preview-analysis-btn" class="preview-btn">🧠 PLANNING PROMPT</button>
+          </div>
+          <div class="header-actions-row header-actions-row-bottom">
+              <button id="manual-btn" class="manual-input-btn">✎ MANUAL INPUT</button>
+              <button id="refresh-btn" class="ai-btn" style="background:#0ff; color:#000; padding: 0.5rem 1rem;">REFRESH POST</button>
+              <button id="analyze-btn" class="ai-btn">GENERATE AI INSIGHTS</button>
+          </div>
       </div>
       <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
     </header>
@@ -266,6 +272,22 @@
               <div style="margin-top: 15px; text-align: right;">
                   <button id="manual-analyze-btn" class="ai-btn">GENERATE AI INSIGHTS</button>
               </div>
+          </div>
+      </div>
+  </div>
+
+  <!-- Prompt Preview Modal -->
+  <div id="prompt-modal" class="post-modal hidden">
+      <div class="modal-container prompt-modal-container">
+          <div class="modal-header">
+              <span id="prompt-modal-title">GEMINI_PROMPT_PREVIEW</span>
+              <div class="modal-actions">
+                  <button id="copy-prompt-btn" class="modal-btn">COPY_PROMPT</button>
+                  <button id="close-prompt-btn" class="modal-btn">CLOSE</button>
+              </div>
+          </div>
+          <div class="modal-body">
+              <pre id="prompt-modal-content" class="prompt-preview-code">LOADING PROMPT...</pre>
           </div>
       </div>
   </div>

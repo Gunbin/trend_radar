@@ -926,6 +926,21 @@ h1 {
     box-shadow: 0 0 15px var(--namu-color);
 }
 
+.card-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.card-action-row .write-btn {
+    margin-top: 0;
+}
+
+.card-action-row .preview-btn {
+    margin-top: 0;
+}
+
 /* Modal for Full Post */
 .post-modal {
     position: fixed;
@@ -1047,9 +1062,19 @@ h1 {
 
 .header-actions {
     display: flex;
+    flex-direction: column;
     justify-content: center;
-    gap: 15px;
+    gap: 8px;
+    flex-wrap: wrap;
     align-items: center;
+}
+
+.header-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
 }
 
 .settings-btn {
@@ -1087,6 +1112,43 @@ h1 {
     background: var(--text-color);
     color: #000;
     box-shadow: 0 0 15px var(--text-color);
+}
+
+.preview-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    color: #ddd;
+    padding: 8px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.25s;
+    margin-top: 10px;
+    letter-spacing: 0.8px;
+}
+
+.preview-btn:hover {
+    border-color: var(--google-color);
+    color: var(--google-color);
+    box-shadow: 0 0 10px rgba(0, 255, 204, 0.35);
+}
+
+.prompt-modal-container {
+    max-width: 1100px;
+}
+
+.prompt-preview-code {
+    background: #030303;
+    border: 1px solid var(--grid-color);
+    color: #c8ffda;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    padding: 16px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 64vh;
+    overflow: auto;
 }
 
 /* Settings Modal Specifics */

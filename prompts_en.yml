@@ -135,14 +135,16 @@ _shared:
   analysis_seo_rules:
     pain_score: |
       ■ Pain Score (painScore, integer 3-15)
-        - severity (1-5): how badly does this problem wreck the reader's life if it blows up?
-        - urgency (1-5): must they solve it right now, or can it wait?
-        - impact (1-5): monetary/time/safety/relationship damage magnitude
-        - Output a single integer = severity + urgency + impact (range 3-15)
-        - Interpretation: ≥9 main high-priority plan / 6-8 support plan / ≤5 sharpen the plan before output
-        - Internally validate the score rationale: cross-check "why this score" against searchVolume/competitionIndex/documentCount.
-          If your score conflicts with hard metrics (e.g., searchVolume is 0), lower the score before output.
-        - Note: final priority is re-evaluated server-side with numeric SEO viability scoring, so do not inflate painScore with purely narrative appeal.
+        Evaluate the reader's practical pain for this keyword intuitively.
+        Synthesize severity (how badly it breaks), urgency (how immediate), and impact (money/time/safety loss)
+        and output exactly one integer between 3 and 15.
+
+        Interpretation: 9+ = urgent/loss-prevention, 6-8 = compare/consideration, 5 or below = re-plan recommended
+
+        Mandatory down-adjustment rules:
+        - If searchVolume is 0 or near-zero, do NOT keep painScore at 9+
+        - If queryConfidence is Low, regenerate the plan itself
+        Final priority is re-scored server-side from numeric metrics, so avoid emotional inflation.
     serp_differentiation: |
       ■ SERP Differentiation (serpDifferentiation) — mandatory 2-step reasoning
         [Step 1] Infer what current top-ranking posts for the mainKeyword commonly cover.
@@ -152,6 +154,8 @@ _shared:
         Required output format:
         "Existing posts only cover [X]. This post focuses on [Y], which readers search next."
         Bad example: "This post is more detailed and friendly."
+        Bad example: "We analyze from multiple perspectives in more depth." (too vague; no concrete missing topic)
+        Good example: "Existing posts only explain links and eligibility. This post focuses on rejection-causing mistakes after application and the appeal process."
     search_behavior: |
       ■ Search Behavior Queries (searchBehaviorQueries)
         - Produce 2-3 colloquial search-bar sentences (≤15 words each)
@@ -166,6 +170,24 @@ _shared:
         [B] counter_intuitive (unexpected facts / belief reversal)
         [C] historical_comparison (comparison with similar past events)
         Plain fact delivery or obvious cause summaries do not qualify.
+    ymyl_bypass: |
+      ■ YMYL Bypass Strategy (ymylBypassStrategy)
+        If the input topic is dominated by large blogs (finance/policy/health),
+        force a different angle using one of these 3 methods. If not a YMYL topic, set applied=false and method="None".
+
+        1. Troubleshooting
+           Instead of "how to apply," focus on "why applications get rejected" or "how to fix access errors."
+           Own practical failure cases that large blogs rarely cover.
+
+        2. Micro-Targeting
+           Instead of broad "small business subsidy," narrow to a tiny segment
+           like "housing strategy for a 30s freelancer with no dependents."
+
+        3. Side-Effect
+           Focus on hidden losses, clawbacks, or penalty-triggering cases.
+           Differentiate against large blogs' mostly positive informational angle.
+
+        reasoning field: one line explaining why this angle was chosen. Do not fabricate facts.
 
 tasks:
   # ===================================================================== #
@@ -210,14 +232,41 @@ tasks:
       3. Plan 3 (Creative Fusion): Try fusing 2 evergreen sources as the 1st priority. Avoid single plans based purely on "buzzfeed" or "yahoo".
       4. Data-shortage fallback (IMPORTANT): If a designated key array is empty or too thin, substitute with the closest-intent key (Burst chain: google → reddit → yahoo → buzzfeed; Evergreen chain: redditScams → redditPoverty → redditFrugal). If still insufficient, return FEWER than {{topic_count}} plans rather than fabricate topics with no data backing.
       5. Anti-Cannibalization (CRITICAL): Always review the '[Published in the last 30 days]' list appended at the bottom of the prompt. NEVER generate a plan covering the same core keyword or identical topic. Find a completely new angle.
+      6. Structural diversity enforcement (very important):
+         Before final output of {{topic_count}} plans, validate all three:
+         ① angleType diversity: if all 3 plans have identical angleType, replace at least one.
+         ② contentDepth diversity: if all 3 are "Normal", change one to "Snack" and one to "Deep-Dive" where context allows.
+         ③ conclusionType diversity: if all 3 are "Q&A", distribute one to "CTA" and one to "Thought" or "Summary".
 
-      [Keyword and Topic Selection]
-      1. Treat the provided measured metrics as guidance. Use the server-provided competition labels (e.g., 🟢 Blue Ocean, 🔴 Red Ocean) to inform keyword decisions, but do not copy those labels verbatim into user-facing fields.
-      2. Prioritize evergreen topic creation. Even when inputs are mostly news-like, you may freely derive practical topics with a lifespan of 1 year or longer using those keywords as motifs.
-      3. ⚪ Unmeasurable keywords are still allowed when contextually valuable, but avoid unsupported hype or fabricated narratives.
-      4. Dynamic Angle Assignment: Choose ONE lowercase English word ('expose', 'guide', or 'compare') that fits the plan best.
-      5. Data/Fact-Driven (coreFact): The fact backing your angle MUST **explicitly include at least ONE of: a number, a proper noun, an institution/outlet name, or a date**. Vague adjectives alone ("many", "significant", "recently") are NOT acceptable. NEVER invent statistics, prices, or counts. If the source has no numbers (e.g., reddit titles only), use the source name, post score, comment count, publish time, rank, or cited outlet as the fact.
-      6. Search Function Integration (Fact Scouting): If the input data is vague or lacks specific numbers/dates, actively use the internal search function to verify the latest facts. **At this time, do not just look at the superficial keywords of the incident; grasp the actual public sentiment regarding the issue (whether it's a playful reaction or real anger) and reflect it in the plan.** Incorporate found background details into the coreFact. (CRITICAL: Never output system texts or symbols like '[Google Search]' anywhere in the final output.)
+      [STEP 1: strict data filtering (find hidden blue-ocean gems)]
+      - ❌ Hard ban: even with high searchVolume, never select ultra red-ocean keywords as standalone topics when competitionIndex > 5.0.
+      - ✅ Priority target: first scan for keywords with searchVolume >= 1,000 and competitionIndex <= 1.5.
+      - Low-rank/unmeasurable terms can still be used as fusion materials when contextually meaningful.
+
+      [STEP 2: topic mutation process (creation, not reuse)]
+      Never use the raw keyword as-is. Force one mutation route:
+      1. Cross-Pollination: [raw keyword] + [recent social issue / another trend]
+      2. Micro-Targeting: [raw keyword] + [tiny specific occupation/age/situation]
+      3. Counter-Intuitive: [raw keyword] + [critical mistake/clawback condition/hidden risk]
+
+      [STEP 3: YMYL + angle tuning]
+      - For YMYL (money/health/policy), plain informational guides are weak. Prefer Troubleshooting or Side-Effect framing.
+      - Dynamic Angle Assignment: choose one of expose/guide/compare.
+      - Data/Fact-Driven (coreFact): include at least one of number/proper noun/institution/date, and never fabricate stats/prices/counts.
+      - Search Function Integration: when data lacks concrete context or dates, verify with internal search and fold findings into coreFact. Never leave tool traces like '[Google Search]'.
+
+      [STEP 4: final mainKeyword compression]
+      - mainKeyword is NOT a title. It must be a noun-heavy 3-4 term search query (no sentence form).
+      - ❌ Worst (too explanatory sentence): "whether high-fuel subsidy can be used at gas stations and clawback precautions"
+      - ❌ Worst (forced Frankenstein phrase): "small-business CJ logistics subsidy 2 million KRW application mistake prevention"
+      - ✅ Best (search-query noun combo): "high-fuel subsidy gas-station clawback"
+      - ✅ Best (problem-solving long-tail): "CJ courier subsidy document rejection"
+      - ✅ Best (micro-target long-tail): "11-month contract severance report"
+      - Blacklist: eligibility, how to apply, guide, full summary, whether, precautions.
+      - Formula A/B/C:
+        - Formula A (target + resolution): [micro target] + [1-2 core terms] + [rejection/fix/solution]
+        - Formula B (risk + warning): [core term] + [hidden side effect/drawback] + [precaution/countermeasure]
+        - Formula C (compare + decision): [core term] vs [alternative] + [how to choose for my case]
 
       [newsSearchQuery]
       - For each plan, output exactly one news search query used later to enrich latest facts in the posting phase.
@@ -229,6 +278,7 @@ tasks:
       <<analysis_seo_rules.serp_differentiation>>
       <<analysis_seo_rules.search_behavior>>
       <<analysis_seo_rules.info_gain>>
+      <<analysis_seo_rules.ymyl_bypass>>
 
       [viralTitles Rules — Psychological Trigger-Based Click Hook Design]
       For each of the three skeletons (curiosity / dataDriven / solution) you MUST equip a **different psychological trigger**. Discard the predictable "A+B=C" approach; channel raw top-voted community vocabulary and layered wit to produce 'click-magnet' titles. (~60 chars)
@@ -254,7 +304,7 @@ tasks:
          enrichedFacts (e.g., benefit amount, discount rate, deadline), not internal scoring values.
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
-      Self-review the six items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
+      Self-review the twelve items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
       ✓ Did you accurately reflect the provided [Real-time Naver Search Metrics]?
       ✓ Did you prioritize blue-ocean keywords with a low competition index?
       ✓ Do the 3 viralTitles each use a distinct psychological trigger?
@@ -263,6 +313,13 @@ tasks:
       ✓ Does at least one of the 3 titles directly address searchIntent's emotion / anxiety / need?
       ✓ Is the painScore sum logically justified, and if below 6, did you resharpen the plan?
       ✓ Does serpDifferentiation name a concrete missing topic rather than a vague "we cover it better"?
+      ✓ Is mainKeyword narrowed to a noun-style 3-4 term long-tail rather than a sentence?
+      ✓ If YMYL, is ymylBypassStrategy.method selected from the 3 methods instead of "None"?
+      ✓ Are the 3 plans not all using the same angleType?
+      ✓ Does output flow strategy-first (ymylBypassStrategy/infoGainAngle) then outcome (mainKeyword), without post-hoc justification?
+      ✓ Did you avoid selecting standalone ultra red-ocean keywords with competitionIndex > 5.0?
+      ✓ Did you prioritize keywords with searchVolume >= 1,000 and competitionIndex <= 1.5?
+      ✓ Did each topic pass through at least one mutation route instead of raw-keyword reuse?
     template: |
       [Live Trend Data]
       {{trends_data}}
@@ -279,13 +336,22 @@ tasks:
               "targetAudience": "A one-line, concrete reader persona (e.g., a 30s office worker tired of overpaying for cell phone plans)"
             },
             "targetKeyword": "The Naver search term used as the basis for these metrics",
-            "mainKeyword": "Naver search keyword (recommended to use keywords from provided metrics)",
             "newsSearchQuery": "Specific news query used in posting phase for latest fact enrichment",
             "searchVolume": 0,
             "documentCount": 0,
             "competitionIndex": 0.0,
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum only)",
             "angleType": "expose | guide | compare (lowercase single word)",
+            "ymylBypassStrategy": {
+              "applied": true,
+              "method": "Troubleshooting | Micro-Targeting | Side-Effect | None (enum only)",
+              "reasoning": "One-line strategic reason for choosing an angle different from large blogs (no fabricated facts)"
+            },
+            "infoGainAngle": {
+              "type": "hidden_risk | counter_intuitive | historical_comparison (enum only)",
+              "description": "1-line description of the specific angle"
+            },
+            "mainKeyword": "No sentence form. Noun-heavy 3-4 term search query (e.g., CJ courier subsidy document rejection)",
             "searchIntent": "The searcher's true intention or hidden anxiety",
             "contentDepth": "Bite-sized | Normal | Deep-Dive (enum value only)",
             "conclusionType": "Q&A | Summary | CTA | Thought (enum value only)",
@@ -294,10 +360,6 @@ tasks:
             "painScore": 11,
             "serpDifferentiation": "The specific information gap that top-ranking articles all miss (1-2 concrete lines)",
             "searchBehaviorQueries": ["colloquial query 1 (<=15 words)", "colloquial query 2"],
-            "infoGainAngle": {
-              "type": "hidden_risk | counter_intuitive | historical_comparison (enum only)",
-              "description": "1-line description of the specific angle"
-            },
             "sourceUrls": ["Original news/post URLs related to this topic found in the input data", "URL2"],
             "queryConfidence": "High | Medium | Low (enum only / Low => discard this plan and regenerate)",
             "viralTitles": {
@@ -313,6 +375,7 @@ tasks:
             ],
             "subTopics": ["Sub-topic 1", "Sub-topic 2", "Sub-topic 3"],
             "coreEntities": ["Entity 1", "Entity 2"],
+            "seoKeywords": ["SEO keyword 1", "keyword 2", "keyword 3"],
             "lsiKeywords": ["lsi-1", "lsi-2", "lsi-3"],
             "imageSearchKeywords": ["english-1", "english-2"],
             "coreMessage": "One real piece of advice, like to a close friend"
@@ -326,20 +389,38 @@ tasks:
       Analyze the user input text and create blog post plans that feel like a close friend texting a real-life tip.
       You have NO knowledge of this blog's past posts. Treat every request as a fresh start and base every plan strictly on the input text below.
 
-      [Topic Selection & Planning Rules]
-      1. Data-based Keyword Bipartition Strategy:
-         - Check the provided measured metrics. If the 'competitionIndex' for the keyword is under 0.5 (a clear blue ocean), you may keep the 'raw keyword' as the mainKeyword.
-         - However, if the competitionIndex is 0.5 or higher, or it's a fierce red ocean, you MUST convert it into a behavior-derived long-tail keyword assuming a very specific situation for the target (e.g., 'National Pension payment gift tax for 18-year-old child') to ensure the survival of the new blog. Directly competing with large keywords without data backing is strictly prohibited.
-         - If multiple candidates have similar painScore, prioritize the lower competitionIndex. For competitionIndex 1.0+, prefer long-tail variants over broad head terms.
-      2. Dynamic Angle Assignment: Choose ONE lowercase English word ('expose', 'guide', or 'compare').
-      3. Data/Fact-Driven (coreFact): The fact backing your angle MUST **explicitly include at least ONE of: a number, a proper noun, an institution/outlet name, or a date**. Vague adjectives alone ("many", "significant", "recently") are NOT acceptable. NEVER invent stats. If the text has no numbers, use named entities, sources, or time markers instead.
-      4. Anti-Cannibalization (CRITICAL): If a '[Published in the last 30 days]' list is appended at the bottom of the prompt, review it first. NEVER generate a plan covering the same core keyword or identical topic already published. Find a completely new angle.
+      [STEP 1: remove surface-level summaries + filter data]
+      - Discard obvious summary lines (how-to/apply/intro) and prioritize hidden penalties, clawback clauses, exception conditions, and niche-only benefits.
+      - ❌ Do not select standalone ultra red-ocean keywords with competitionIndex > 5.0.
+      - ✅ Prioritize candidates with searchVolume >= 1,000 and competitionIndex <= 1.5.
+      - Anti-Cannibalization: if '[Published in the last 30 days]' exists, reject overlapping core topics immediately.
+
+      [STEP 2: topic mutation process]
+      Transform ideas through one mutation path:
+      1. Cross-Pollination: [core info] + [recent social issue / another trend]
+      2. Micro-Targeting: [core info] + [tiny occupation/age/situation]
+      3. Counter-Intuitive: [core info] + [critical mistake/clawback condition/hidden risk]
+
+      [STEP 3: YMYL + angle tuning]
+      - For YMYL, avoid plain informational guides; push Troubleshooting or Side-Effect framing.
+      - Dynamic Angle Assignment: choose one of expose/guide/compare.
+      - Data/Fact-Driven coreFact: include at least one number/proper noun/institution/date; no fabricated statistics.
+
+      [STEP 4: final mainKeyword compression]
+      - mainKeyword must be a noun-heavy 3-4 term search query (no sentence form).
+      - ❌ Worst (too explanatory sentence): "whether high-fuel subsidy can be used at gas stations and clawback precautions"
+      - ❌ Worst (forced Frankenstein phrase): "small-business subsidy application mistake prevention"
+      - ✅ Best (search-query noun combo): "high-fuel subsidy gas-station clawback"
+      - ✅ Best (problem-solving long-tail): "delivery subsidy document rejection"
+      - ✅ Best (micro-target long-tail): "11-month contract severance report"
+      - Blacklist: eligibility, how to apply, guide, full summary, whether, precautions.
 
       [🔥 Emerging-Blog SEO Boost Rules — MANDATORY]
       <<analysis_seo_rules.pain_score>>
       <<analysis_seo_rules.serp_differentiation>>
       <<analysis_seo_rules.search_behavior>>
       <<analysis_seo_rules.info_gain>>
+      <<analysis_seo_rules.ymyl_bypass>>
 
       [viralTitles Rules — Psychological Trigger-Based Click Hook Design]
       For each of the three skeletons (curiosity / dataDriven / solution) you MUST equip a **different psychological trigger**. Discard the predictable "A+B=C" approach; channel raw top-voted community vocabulary and layered wit to produce 'click-magnet' titles. (~60 chars)
@@ -365,13 +446,20 @@ tasks:
          enrichedFacts (e.g., benefit amount, discount rate, deadline), not internal scoring values.
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
-      Self-review the six items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
+      Self-review the twelve items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
       ✓ Do the 3 viralTitles each use a distinct psychological trigger?
       ✓ Does coreFact explicitly contain at least one number / proper noun / institution / date?
       ✓ Do viralTitles and metaDescription speak in the tone/vocabulary the targetAudience would actually use?
       ✓ Does at least one of the 3 titles directly address searchIntent's emotion / anxiety / need?
       ✓ Is the painScore sum logically justified, and if below 6, did you resharpen the plan?
       ✓ Does serpDifferentiation name a concrete missing topic rather than a vague "we cover it better"?
+      ✓ Is mainKeyword narrowed to a noun-style 3-4 term long-tail rather than a sentence?
+      ✓ If YMYL, is ymylBypassStrategy.method selected from the 3 methods instead of "None"?
+      ✓ Are the 3 plans not all using the same angleType?
+      ✓ Does output flow strategy-first (ymylBypassStrategy/infoGainAngle) then outcome (mainKeyword), without post-hoc justification?
+      ✓ Did you avoid selecting standalone ultra red-ocean keywords with competitionIndex > 5.0?
+      ✓ Did you prioritize keywords with searchVolume >= 1,000 and competitionIndex <= 1.5?
+      ✓ Did each topic pass through at least one mutation route instead of raw-keyword reuse?
     template: |
       [User Input Text]
       {{manual_text}}
@@ -389,13 +477,22 @@ tasks:
               "targetAudience": "A one-line, concrete reader persona"
             },
             "targetKeyword": "The Naver search term used as the basis for these metrics",
-            "mainKeyword": "Strategically refined main keyword for the post",
             "newsSearchQuery": "Specific news query used in posting phase for latest fact enrichment",
             "searchVolume": 0,
             "documentCount": 0,
             "competitionIndex": 0.0,
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum only)",
             "angleType": "expose | guide | compare (lowercase single word)",
+            "ymylBypassStrategy": {
+              "applied": true,
+              "method": "Troubleshooting | Micro-Targeting | Side-Effect | None (enum only)",
+              "reasoning": "One-line strategic reason for choosing an angle different from large blogs (no fabricated facts)"
+            },
+            "infoGainAngle": {
+              "type": "hidden_risk | counter_intuitive | historical_comparison (enum only)",
+              "description": "1-line description of the specific angle"
+            },
+            "mainKeyword": "No sentence form. Noun-heavy 3-4 term search query (e.g., delivery subsidy document rejection)",
             "searchIntent": "The searcher's true intention or hidden anxiety",
             "contentDepth": "Bite-sized | Normal | Deep-Dive (enum value only)",
             "conclusionType": "Q&A | Summary | CTA | Thought (enum value only)",
@@ -404,10 +501,6 @@ tasks:
             "painScore": 11,
             "serpDifferentiation": "The specific information gap that top-ranking articles all miss (1-2 concrete lines)",
             "searchBehaviorQueries": ["colloquial query 1 (<=15 words)", "colloquial query 2"],
-            "infoGainAngle": {
-              "type": "hidden_risk | counter_intuitive | historical_comparison (enum only)",
-              "description": "1-line description of the specific angle"
-            },
             "sourceUrls": ["Original news/post URLs related to this topic found in the input data", "URL2"],
             "queryConfidence": "High | Medium | Low (enum only / Low => discard this plan and regenerate)",
             "viralTitles": {

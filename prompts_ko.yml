@@ -136,15 +136,17 @@ _shared:
   # =========================================================================
   analysis_seo_rules:
     pain_score: |
-      ■ Pain Score 연산 (painScore, 정수 3~15)
-        - 심각성(severity) 1~5: 이 문제가 터지면 독자의 삶이 얼마나 망가지나?
-        - 시급성(urgency) 1~5: 지금 당장 찾아야 하는 문제인가, 여유 있는 문제인가?
-        - 타격(impact) 1~5: 금전·시간·안전·관계 등 실질 피해 크기
-        - 세 점수를 합산한 **정수 하나**를 painScore로 출력. (범위 3~15)
-        - 해석 기준: 9점 이상 = 긴급·손실 방지형 메인 기획 / 6~8점 = 비교·고민 단계 보조 기획 / 5점 이하 = 기획안을 다시 날카롭게 다듬어 출력
-        - 산출 근거를 내부적으로 반드시 검증하라: "왜 이 점수인지"를 searchVolume/competitionIndex/documentCount와 함께 교차 점검하고,
-          숫자 데이터와 충돌하는 과대 점수(예: searchVolume 0인데 고득점)는 스스로 하향 조정하라.
-        - 참고: 최종 priority는 서버의 수치 기반 SEO 생존 점수로 재평가되므로, painScore를 임의 감성 점수로 과장하지 마라.
+      ■ Pain Score (painScore, 정수 3~15)
+        이 키워드를 검색하는 독자의 실질적 고통 지수를 직관적으로 평가하세요.
+        심각성(문제가 터지면 얼마나 망가지나), 시급성(지금 당장인가), 타격(금전·시간·안전 피해)
+        세 감각을 종합해 3~15 사이 정수 하나만 출력하세요.
+
+        해석 기준: 9점 이상 = 긴급·손실방지형 / 6~8점 = 비교·고민형 / 5점 이하 = 재기획 권고
+
+        필수 하향 조정 조건:
+        - searchVolume이 0이거나 극소인데 9점 이상 → 즉시 내려라
+        - queryConfidence가 Low → 기획안 자체를 재도출하라
+        최종 priority는 서버 수치 기반으로 재평가되므로 감성 과장 금지.
     serp_differentiation: |
       ■ SERP Differentiation (serpDifferentiation) — 2단계 사고 과정 필수
         [1단계] 해당 mainKeyword 검색 상위 글들이 공통으로 담고 있을 내용을 추론한다.
@@ -154,6 +156,8 @@ _shared:
         출력 형식 (반드시 이 형식으로):
         "기존 글들은 [X]만 다룬다. 이 글은 독자가 그 다음으로 찾을 [Y]에 집중한다."
         나쁜 예: "기존 글보다 더 친절하고 상세하게 설명한다."
+        나쁜 예: "다양한 관점에서 더 깊이 분석한다." (← 구체적 누락 주제 없음, 탈락)
+        좋은 예: "기존 글들은 신청 링크와 조건만 다룬다. 이 글은 신청 후 반려당하는 실수 케이스와 이의신청 절차에 집중한다."
     search_behavior: |
       ■ Search Behavior Queries (searchBehaviorQueries)
         - 독자가 실제 검색창에 타이핑할 구어체 문장 2~3개 (각 최대 15단어 이내)
@@ -168,6 +172,24 @@ _shared:
         [B] 의외의 사실 / 통념 반박 (counter_intuitive)
         [C] 과거 유사 사건 비교 분석 (historical_comparison)
         단순 사실 전달이나 뻔한 원인 분석은 infoGainAngle이 될 수 없다.
+    ymyl_bypass: |
+      ■ YMYL 측면 돌파 전략 (ymylBypassStrategy)
+        입력 데이터가 금융·정책·건강 등 대형 블로그 장악 주제라면,
+        아래 3종 중 하나로 각도를 비틀어 기획하세요. YMYL 주제가 아니면 applied=false, method="None".
+
+        1. Troubleshooting (문제 해결형)
+           "신청 방법" 대신 "신청 시 반려당하는 실수", "접속 오류 해결법" 등
+           실무적 실패 케이스를 선점. 대형 블로그가 절대 다루지 않는 구간.
+
+        2. Micro-Targeting (초정밀 타겟형)
+           "소상공인 지원금" 대신 "부양가족 없는 30대 프리랜서 청약 전략"처럼
+           타겟을 극도로 좁혀 경쟁 밀도 자체를 없앰.
+
+        3. Side-Effect (함정 경고형)
+           "모르면 나만 손해", "환수 조치 당하는 케이스" 등
+           손실 회피 심리 자극. 대형 블로그의 긍정 정보와 역방향 차별화.
+
+        reasoning 필드: 이 앵글을 선택한 이유 1줄. 팩트 창작 금지.
 
 tasks:
   # ===================================================================== #
@@ -213,14 +235,41 @@ tasks:
       3. 기획안 3 (창의적 융합형): 에버그린 소스 2개 융합을 1순위로 시도하세요. "signal" 기반 단독 기획은 가급적 피하고 에버그린을 융합하세요.
       4. 데이터 부족 대응(중요): 위에서 지정한 Key의 배열이 비어 있거나 너무 빈약하면, 의도가 가장 가까운 다른 Key로 대체하세요. (이슈군 보강 순서: signal → gNewsBiz → gNewsLabor → aha, 정보군 보강 순서: fss → policy → ppomppu) 그래도 재료가 부족하면 기획안 수를 {{topic_count}}개보다 줄이는 한이 있어도, 입력 데이터에 근거 없는 주제를 임의로 만들어내지 마세요.
       5. 카니발리제이션 방지(매우 중요): 프롬프트 최하단에 제공된 '[최근 30일 발행 이력]' 목록을 반드시 확인하고, 이전에 이미 발행된 핵심 키워드나 완전히 동일한 주제(메시지)를 다루는 기획안은 절대 생성하지 마세요. 완전히 새로운 시각과 앵글을 발굴해야 합니다.
+      6. 구조 다양성 강제 (매우 중요):
+         {{topic_count}}개 기획안 전체를 출력하기 전에 아래 세 가지를 반드시 확인하세요.
+         ① angleType 다양성: 3개 기획안이 모두 동일한 angleType이면 반드시 하나를 교체하세요. expose / guide / compare가 가능한 한 골고루 배분되도록 하세요.
+         ② contentDepth 다양성: 3개 모두 'Normal'이면 하나는 'Snack', 하나는 'Deep-Dive'로 변경하세요. 주제 성격에 맞지 않는 강제 변경은 금지하되, 주제가 허용하는 범위 안에서 변주하세요.
+         ③ conclusionType 다양성: 3개 모두 'Q&A'이면 하나는 'CTA', 하나는 'Thought' 또는 'Summary'로 배분하세요.
 
-      [키워드 및 주제 선정]
-      1. 제공된 실측 데이터는 참고용입니다. 특히 경쟁강도 레이블(예: 🟢 블루오션, 🔴 레드오션)을 참고해 키워드를 선택하되, 레이블 자체를 출력 문구로 복붙하지는 마세요.
-      2. 에버그린 주제 창조를 우선하세요. 입력 데이터가 뉴스성 소스에 치중되어 있어도 키워드를 모티브로 수명 1년 이상의 실용 주제를 자유롭게 파생할 수 있습니다.
-      3. ⚪ 측정불가 키워드도 맥락상 가치가 있으면 활용 가능하지만, 근거 없는 과장 주제는 금지합니다.
-      4. 앵글(Angle) 동적 할당: 각 기획의 성격에 맞춰 'expose'(폭로/리스크), 'guide'(절차/방법), 'compare'(비교/선택) 중 가장 어울리는 것을 영문 소문자로 하나만 선택하세요.
-      5. 데이터/팩트 중심(coreFact): 선택한 앵글을 뒷받침할 팩트는 **숫자·고유명사·기관명·날짜 중 최소 1개를 반드시 명시적으로 포함**해야 합니다. "많이", "상당한", "최근에" 같은 추상 형용사만으로는 불가. 입력 데이터에 없는 수치·통계·가격은 절대 만들어내지 마세요. 수치가 적은 출처(예: signal/aha)라면 출처명, 발생 시점, 순위(rank), 질문 맥락, 인용된 언론사명을 팩트로 활용하세요.
-      6. 검색 기능 활용 (팩트 정찰): 제공된 입력 데이터만으로 맥락 파악이 어렵거나 구체적인 수치/날짜가 부족한 경우, 내부 검색 기능을 활용하여 최신 팩트를 확인하세요. **이때 단순히 사건의 표면적인 키워드만 보지 말고, 해당 이슈에 대한 대중의 실제 여론(장난스러운 반응인지, 실제 분노인지)을 파악하여 기획에 반영하세요.** 파악된 구체적인 배경 정보는 coreFact에 녹여내세요. (중요: 단, 결과물 어디에도 '[Google Search]' 와 같이 검색 도구를 사용했다는 텍스트 흔적을 절대 남기지 마세요.)
+      [STEP 1: 철저한 데이터 필터링 (흙진주 발굴)]
+      - ❌ 절대 금지: searchVolume이 높아도 competitionIndex가 5.0을 초과하는 초레드오션 키워드는 단독 주제로 절대 선정하지 마세요.
+      - ✅ 최우선 타겟: searchVolume 1,000 이상 + competitionIndex 1.5 이하인 블루오션/경쟁보통 키워드를 우선 발굴하세요.
+      - 하위권/측정불가 데이터라도 맥락 가치가 있으면 결합 재료로 활용하되, 근거 없는 과장 주제는 금지합니다.
+
+      [STEP 2: 주제 변이 및 창조 (Mutation Process)]
+      선정된 원본 키워드를 그대로 쓰지 말고, 아래 3개 공식 중 하나로 반드시 변이하세요.
+      1. 교차 결합(Cross-Pollination): [원형 키워드] + [최근 사회적 이슈/다른 트렌드]
+      2. 마이크로 타겟팅(Micro-Targeting): [원형 키워드] + [극소수 특정 직업/연령/상황]
+      3. 역발상/결핍(Counter-Intuitive): [원형 키워드] + [치명적 오류/환수 조건/숨은 리스크]
+
+      [STEP 3: YMYL 및 앵글 튜닝]
+      - 주제가 돈/건강/정책(YMYL)이라면 단순 안내형은 금지하고 Trouble-shooting 또는 Side-Effect 관점으로 설계하세요.
+      - 앵글(Angle) 동적 할당: 각 기획의 성격에 맞춰 'expose'(폭로/리스크), 'guide'(절차/방법), 'compare'(비교/선택) 중 하나를 선택하세요.
+      - 데이터/팩트 중심(coreFact): 선택한 앵글을 뒷받침할 팩트는 숫자·고유명사·기관명·날짜 중 최소 1개를 명시하세요. 입력 데이터에 없는 수치/통계/가격 창작 금지.
+      - 검색 기능 활용 (팩트 정찰): 데이터만으로 맥락 파악이 어렵거나 수치/날짜가 부족하면 내부 검색으로 확인하고 coreFact에 반영하세요. (결과물에 '[Google Search]' 흔적 금지)
+
+      [STEP 4: 최종 키워드(mainKeyword) 압축 규칙]
+      - mainKeyword는 글 제목이 아니라 검색창용 키워드입니다. 문장형 절대 금지, 명사 중심 3~4어절로 압축하세요.
+      - ❌ 최악 예시(문장형): "고유가 지원금 주유소 사용 가능 여부와 환수 주의사항"
+      - ❌ 최악 예시(억지 조합): "소상공인 CJ대한통운 물류비 200만원 신청 실수 방지"
+      - ✅ 최고 예시(검색창형 명사): "고유가 지원금 주유소 환수"
+      - ✅ 최고 예시(문제 해결형): "CJ택배 지원금 서류 탈락"
+      - ✅ 최고 예시(초정밀 타겟): "11개월 계약직 퇴직금 신고"
+      - 금지어: "신청 자격", "신청 방법", "안내", "총정리", "여부", "주의사항"
+      - 조립 공식:
+        - 공식 A(타겟+문제해결): [초구체 타겟] + [원형 핵심어 1~2개] + [반려/거절/해결법]
+        - 공식 B(리스크+경고): [원형 핵심어] + [숨은 부작용/단점] + [주의사항/대비책]
+        - 공식 C(비교+선택): [원형 핵심어] vs [대체재] + [나에게 맞는 선택법]
 
       [newsSearchQuery]
       - 각 기획안마다 포스팅 단계의 최신 팩트 보강 검색에 사용할 뉴스 검색 쿼리 1개를 반드시 출력하세요.
@@ -232,6 +281,7 @@ tasks:
       <<analysis_seo_rules.serp_differentiation>>
       <<analysis_seo_rules.search_behavior>>
       <<analysis_seo_rules.info_gain>>
+      <<analysis_seo_rules.ymyl_bypass>>
 
       [viralTitles 작성 규칙 — 심리 트리거 기반 클릭 훅 설계]
       아래 3가지 뼈대(curiosity / dataDriven / solution)에 반드시 **각기 다른 심리 트리거**를 장착하세요. A+B=C 식 뻔한 단어 조립을 버리고, 커뮤니티 베스트 게시물처럼 날것의 어휘와 입체적 위트로 '클릭을 참을 수 없는 제목'을 도출하세요. (공백 포함 25자 이내)
@@ -257,7 +307,7 @@ tasks:
          dataDriven 제목에 넣는 수치는 coreFact 또는 enrichedFacts의 실생활 팩트(지원금액, 할인율, 날짜)를 우선 사용하세요.
 
       [최종 출력 전 자가 점검 체크리스트 (모든 blogPost 항목에 적용)]
-      아래 6개 항목을 스스로 검토해 기준 미달이면 해당 필드를 수정한 뒤 출력하세요. **체크리스트 자체는 응답 JSON에 포함하지 마세요.**
+      아래 12개 항목을 스스로 검토해 기준 미달이면 해당 필드를 수정한 뒤 출력하세요. **체크리스트 자체는 응답 JSON에 포함하지 마세요.**
       ✓ 제공된 [실시간 네이버 검색 데이터]의 수치를 정확히 반영했는가?
       ✓ 경쟁 지수가 낮은 블루오션 키워드를 우선 선정했는가?
       ✓ viralTitles 3개가 서로 다른 심리 트리거를 사용하는가?
@@ -266,6 +316,13 @@ tasks:
       ✓ 3개 제목 중 최소 1개가 searchIntent의 감정·불안·니즈를 정면으로 관통하는가?
       ✓ painScore 합산이 논리적으로 타당하고, 6점 미만이면 기획을 다시 가다듬었는가?
       ✓ serpDifferentiation 이 "더 자세히 설명" 같은 모호한 차별화가 아니라 구체적 누락 주제를 가리키는가?
+      ✓ mainKeyword가 targetKeyword 원형 그대로가 아닌 명사형 3~4어절 롱테일로 좁혀졌는가?
+      ✓ YMYL 주제라면 ymylBypassStrategy.method가 "None"이 아닌 3종 중 하나로 선택되었는가?
+      ✓ 이번 기획안 3개의 angleType이 모두 동일하지는 않은가? 다양성을 확인하라.
+      ✓ 출력 순서가 전략(ymylBypassStrategy/infoGainAngle) → 결과(mainKeyword) 흐름을 따르고, mainKeyword가 전략을 사후 정당화하지 않는가?
+      ✓ competitionIndex가 5.0 초과인 초레드오션 키워드를 단독 주제로 뽑지 않았는가?
+      ✓ searchVolume 1,000 이상 + competitionIndex 1.5 이하 키워드를 우선 검토했는가?
+      ✓ 원형 키워드를 그대로 복붙하지 않고 변이 공식 3종 중 하나를 거쳤는가?
     template: |
       [실시간 트렌드 데이터]
       {{trends_data}}
@@ -283,13 +340,22 @@ tasks:
               "targetAudience": "이 글을 클릭할 구체적인 타겟 페르소나 한 줄 (예: 매달 통신비가 아까운 30대 직장인)"
             },
             "targetKeyword": "수치 데이터의 근거가 된 네이버 조회 키워드명",
-            "mainKeyword": "전략적으로 다듬은 포스팅 메인 키워드",
             "newsSearchQuery": "포스팅 단계에서 최신 팩트 보강용으로 사용할 구체 뉴스 검색 쿼리",
             "searchVolume": 0,
             "documentCount": 0,
             "competitionIndex": 0.0,
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum 값만)",
             "angleType": "expose | guide | compare (영문 소문자 한 단어만)",
+            "ymylBypassStrategy": {
+              "applied": true,
+              "method": "Troubleshooting | Micro-Targeting | Side-Effect | None (enum 값만)",
+              "reasoning": "대형 블로그와 다른 앵글을 선택한 전략적 이유 1줄 (팩트 창작 금지)"
+            },
+            "infoGainAngle": {
+              "type": "hidden_risk | counter_intuitive | historical_comparison (enum 값만)",
+              "description": "구체적으로 어떤 앵글인지 1줄 설명"
+            },
+            "mainKeyword": "문장형 절대 금지. 조사를 뺀 명사 중심 3~4어절 검색 키워드 (예: CJ택배 지원금 서류 탈락)",
             "searchIntent": "이 키워드를 검색하는 사람의 진짜 속마음이나 불안감",
             "contentDepth": "Snack | Normal | Deep-Dive (enum 값만)",
             "conclusionType": "Q&A | Summary | CTA | Thought (enum 값만)",
@@ -298,10 +364,6 @@ tasks:
             "painScore": 11,
             "serpDifferentiation": "현재 상위 노출 글들이 놓치고 있는 구체적 정보 격차 1~2줄 (예: '대부분 해지 방법만 다루지만 자동결제 잔존 위험은 아무도 안 짚음')",
             "searchBehaviorQueries": ["구어체 검색문 1 (15단어 이내)", "구어체 검색문 2"],
-            "infoGainAngle": {
-              "type": "hidden_risk | counter_intuitive | historical_comparison (enum 값만)",
-              "description": "구체적으로 어떤 앵글인지 1줄 설명"
-            },
             "sourceUrls": ["입력 데이터에서 찾은 이 주제와 관련된 원본 뉴스/게시글 URL", "URL2"],
             "queryConfidence": "High | Medium | Low (enum 값만 / Low 면 기획안 자체를 폐기 후 재도출)",
             "viralTitles": {
@@ -331,19 +393,38 @@ tasks:
       제공된 사용자의 입력 텍스트를 분석하여, 친한 지인에게 카톡으로 알려주듯 실생활에 밀착된 블로그 기획안을 작성하세요.
       당신은 이 블로그의 과거 발행 이력을 전혀 알지 못하는 상태로 매 요청을 새로 받습니다. 입력 텍스트만 근거로 매번 새롭게 기획하세요.
 
-      [주제 선정 및 기획 필수 규칙]
-      1. 키워드 전략: 입력된 텍스트 내용과 독자의 원초적 욕망(돈, 시간, 호구 방지, 효율성, 편의성)을 결합하여, 단순 요약이 아닌 개인의 실천이 가능한 '행동 파생 키워드'를 mainKeyword로 설정하세요.
-         - **[예외 조항] 단, 원본 키워드 자체가 주는 트래픽 볼륨이나 직관성이 압도적이라고 판단된다면 무리하게 파생형으로 변형하지 말고 원본을 유지하세요.**
-         - 단, 같은 painScore 후보가 여러 개면 경쟁지수(competitionIndex)가 더 낮은 키워드를 우선 선정하고, competitionIndex가 1.0 이상인 경우에는 롱테일 파생 키워드로 전환해 경쟁을 회피하세요.
-      2. 앵글(Angle) 동적 할당: 각 주제의 성격에 맞춰 'expose'(폭로/리스크), 'guide'(절차/방법), 'compare'(비교/선택) 중 가장 찰떡같이 어울리는 것을 영문 소문자로 하나만 선택하세요.
-      3. 데이터/팩트 중심(coreFact): 선택한 앵글을 강력하게 뒷받침할 팩트는 **숫자·고유명사·기관명·날짜 중 최소 1개를 반드시 명시적으로 포함**해야 합니다. "많이", "상당한", "최근에" 같은 추상 형용사만으로는 불가. 입력 텍스트에 없는 수치·통계·가격은 절대 만들어내지 마세요. 수치가 없다면 텍스트에서 고유명사, 인용 출처, 시점 표현을 팩트로 활용하세요.
-      4. 카니발리제이션 방지(매우 중요): 프롬프트 최하단에 '[최근 30일 발행 이력]' 목록이 첨부되어 있을 경우 반드시 확인하고, 이미 발행된 핵심 키워드나 동일한 주제(메시지)를 다루는 기획안은 절대 생성하지 마세요. 완전히 새로운 시각과 앵글을 발굴해야 합니다.
+      [STEP 1: 표면 정보 배제 + 데이터 필터링]
+      - 입력 텍스트의 뻔한 요약(신청 방법/단순 소개)은 버리고, 예외 조항·패널티·환수 조건·특정인 혜택 같은 숨은 정보를 우선 발굴하세요.
+      - ❌ competitionIndex가 5.0을 초과하는 초레드오션 키워드는 단독 주제로 금지하세요.
+      - ✅ searchVolume 1,000 이상 + competitionIndex 1.5 이하 키워드를 우선 검토하세요.
+      - 카니발리제이션 방지: 하단 '[최근 30일 발행 이력]'과 중복되는 핵심 키워드/주제는 즉시 폐기하세요.
+
+      [STEP 2: 주제 변이 및 창조 (Mutation Process)]
+      단순 요약 대신 아래 3개 공식 중 하나를 반드시 거쳐 독창 주제로 변이하세요.
+      1. 교차 결합(Cross-Pollination): [핵심 정보] + [최근 사회 이슈/다른 트렌드]
+      2. 마이크로 타겟팅(Micro-Targeting): [핵심 정보] + [극소수 직업/연령/상황]
+      3. 역발상/결핍(Counter-Intuitive): [핵심 정보] + [치명적 오류/환수 조건/숨은 리스크]
+
+      [STEP 3: YMYL 및 앵글 튜닝]
+      - YMYL(돈/건강/정책) 주제는 안내형을 피하고 Trouble-shooting 또는 Side-Effect 관점으로 설계하세요.
+      - 앵글(Angle) 동적 할당: 'expose', 'guide', 'compare' 중 가장 맞는 하나를 선택하세요.
+      - 데이터/팩트 중심(coreFact): 숫자·고유명사·기관명·날짜 중 최소 1개를 명시하고, 수치/통계/가격 창작 금지.
+
+      [STEP 4: 최종 키워드(mainKeyword) 압축 규칙]
+      - mainKeyword는 문장형 금지, 검색창용 명사 중심 3~4어절로 압축하세요.
+      - ❌ 최악 예시(문장형): "고유가 지원금 주유소 사용 가능 여부와 환수 주의사항"
+      - ❌ 최악 예시(억지 조합): "소상공인 지원금 신청 실수 방지"
+      - ✅ 최고 예시(검색창형 명사): "고유가 지원금 주유소 환수"
+      - ✅ 최고 예시(문제 해결형): "택배 지원금 서류 탈락"
+      - ✅ 최고 예시(초정밀 타겟): "11개월 계약직 퇴직금 신고"
+      - 금지어: "신청 자격", "신청 방법", "안내", "총정리", "여부", "주의사항"
 
       [🔥 신생 블로그 SEO 보강 규칙 — 필수]
       <<analysis_seo_rules.pain_score>>
       <<analysis_seo_rules.serp_differentiation>>
       <<analysis_seo_rules.search_behavior>>
       <<analysis_seo_rules.info_gain>>
+      <<analysis_seo_rules.ymyl_bypass>>
 
       [viralTitles 작성 규칙 — 심리 트리거 기반 클릭 훅 설계]
       아래 3가지 뼈대(curiosity / dataDriven / solution)에 반드시 **각기 다른 심리 트리거**를 장착하세요. A+B=C 식 뻔한 단어 조립을 버리고, 커뮤니티 베스트 게시물처럼 날것의 어휘와 입체적 위트로 '클릭을 참을 수 없는 제목'을 도출하세요. (공백 포함 25자 이내)
@@ -369,13 +450,20 @@ tasks:
          dataDriven 제목에 넣는 수치는 coreFact 또는 enrichedFacts의 실생활 팩트(지원금액, 할인율, 날짜)를 우선 사용하세요.
 
       [최종 출력 전 자가 점검 체크리스트 (모든 blogPost 항목에 적용)]
-      아래 6개 항목을 스스로 검토해 기준 미달이면 해당 필드를 수정한 뒤 출력하세요. **체크리스트 자체는 응답 JSON에 포함하지 마세요.**
+      아래 12개 항목을 스스로 검토해 기준 미달이면 해당 필드를 수정한 뒤 출력하세요. **체크리스트 자체는 응답 JSON에 포함하지 마세요.**
       ✓ viralTitles 3개가 서로 다른 심리 트리거를 사용하는가?
       ✓ coreFact에 숫자·고유명사·기관명·날짜 중 최소 1개가 명시적으로 포함되는가?
       ✓ viralTitles·metaDescription의 어휘가 targetAudience가 실제로 구사할 톤과 일치하는가?
       ✓ 3개 제목 중 최소 1개가 searchIntent의 감정·불안·니즈를 정면으로 관통하는가?
       ✓ painScore 합산이 논리적으로 타당하고, 6점 미만이면 기획을 다시 가다듬었는가?
       ✓ serpDifferentiation 이 "더 자세히 설명" 같은 모호한 차별화가 아니라 구체적 누락 주제를 가리키는가?
+      ✓ mainKeyword가 targetKeyword 원형 그대로가 아닌 명사형 3~4어절 롱테일로 좁혀졌는가?
+      ✓ YMYL 주제라면 ymylBypassStrategy.method가 "None"이 아닌 3종 중 하나로 선택되었는가?
+      ✓ 이번 기획안 3개의 angleType이 모두 동일하지는 않은가? 다양성을 확인하라.
+      ✓ 출력 순서가 전략(ymylBypassStrategy/infoGainAngle) → 결과(mainKeyword) 흐름을 따르고, mainKeyword가 전략을 사후 정당화하지 않는가?
+      ✓ competitionIndex가 5.0 초과인 초레드오션 키워드를 단독 주제로 뽑지 않았는가?
+      ✓ searchVolume 1,000 이상 + competitionIndex 1.5 이하 키워드를 우선 검토했는가?
+      ✓ 단순 요약이 아니라 변이 공식 3종 중 하나를 거쳐 주제를 재창조했는가?
     template: |
       [사용자 입력 텍스트]
       {{manual_text}}
@@ -393,13 +481,22 @@ tasks:
               "targetAudience": "이 글을 클릭할 구체적인 타겟 페르소나 한 줄 (예: 매달 통신비가 아까운 30대 직장인)"
             },
             "targetKeyword": "수치 데이터의 근거가 된 네이버 조회 키워드명",
-            "mainKeyword": "전략적으로 다듬은 포스팅 메인 키워드",
             "newsSearchQuery": "포스팅 단계에서 최신 팩트 보강용으로 사용할 구체 뉴스 검색 쿼리",
             "searchVolume": 0,
             "documentCount": 0,
             "competitionIndex": 0.0,
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum 값만)",
             "angleType": "expose | guide | compare (영문 소문자 한 단어만)",
+            "ymylBypassStrategy": {
+              "applied": true,
+              "method": "Troubleshooting | Micro-Targeting | Side-Effect | None (enum 값만)",
+              "reasoning": "대형 블로그와 다른 앵글을 선택한 전략적 이유 1줄 (팩트 창작 금지)"
+            },
+            "infoGainAngle": {
+              "type": "hidden_risk | counter_intuitive | historical_comparison (enum 값만)",
+              "description": "구체적으로 어떤 앵글인지 1줄 설명"
+            },
+            "mainKeyword": "문장형 절대 금지. 조사를 뺀 명사 중심 3~4어절 검색 키워드 (예: 택배 지원금 서류 탈락)",
             "searchIntent": "이 키워드를 검색하는 사람의 진짜 속마음이나 불안감",
             "contentDepth": "Snack | Normal | Deep-Dive (enum 값만)",
             "conclusionType": "Q&A | Summary | CTA | Thought (enum 값만)",
@@ -408,10 +505,6 @@ tasks:
             "painScore": 11,
             "serpDifferentiation": "현재 상위 노출 글들이 놓치고 있는 구체적 정보 격차 1~2줄",
             "searchBehaviorQueries": ["구어체 검색문 1 (15단어 이내)", "구어체 검색문 2"],
-            "infoGainAngle": {
-              "type": "hidden_risk | counter_intuitive | historical_comparison (enum 값만)",
-              "description": "구체적으로 어떤 앵글인지 1줄 설명"
-            },
             "sourceUrls": ["입력 데이터에서 찾은 이 주제와 관련된 원본 뉴스/게시글 URL", "URL2"],
             "queryConfidence": "High | Medium | Low (enum 값만 / Low 면 기획안 자체를 폐기 후 재도출)",
             "viralTitles": {
@@ -427,6 +520,7 @@ tasks:
             ],
             "subTopics": ["소주제1", "소주제2", "소주제3..."],
             "coreEntities": ["본문에서 반드시 언급되어야 할 고유명사, 전문용어 등"],
+            "seoKeywords": ["본문 노출 및 태그용 검색 최적화 키워드 3~5개", "키워드2", "키워드3"],
             "lsiKeywords": ["연관단어1", "연관단어2", "연관단어3"],
             "imageSearchKeywords": ["english-1", "english-2", "english-3", "english-4"],
             "coreMessage": "친한 지인에게 건네는 단 하나의 진짜 조언"

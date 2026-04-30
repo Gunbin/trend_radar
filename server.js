@@ -125,6 +125,18 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                         },
                         required: ["type", "description"]
                     },
+                    ymylBypassStrategy: {
+                        type: "object",
+                        properties: {
+                            applied: { type: "boolean" },
+                            method: {
+                                type: "string",
+                                enum: ["Troubleshooting", "Micro-Targeting", "Side-Effect", "None"]
+                            },
+                            reasoning: { type: "string" }
+                        },
+                        required: ["applied", "method", "reasoning"]
+                    },
                     sourceUrls: { type: "array", items: { type: "string" } }
                 },
                 required: [
@@ -132,7 +144,8 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     "contentDepth", "conclusionType", "coreFact", "viralTitles", "metaDescription",
                     "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "lsiKeywords",
                     "imageSearchKeywords", "coreMessage", "painScore", "serpDifferentiation", 
-                    "searchBehaviorQueries", "queryConfidence", "infoGainAngle", "searchVolume", "documentCount", "competitionIndex"
+                    "searchBehaviorQueries", "queryConfidence", "infoGainAngle", "ymylBypassStrategy",
+                    "searchVolume", "documentCount", "competitionIndex"
                 ]
             }
         }
@@ -1934,6 +1947,19 @@ function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
         post.documentCount = dc;
         post.competitionIndex = ci;
     }
+
+    // searchBehaviorQueries 길이/개수 보정 (프롬프트 지시 불이행 대비)
+    for (const post of analysisJson.blogPosts || []) {
+        if (Array.isArray(post.searchBehaviorQueries)) {
+            post.searchBehaviorQueries = post.searchBehaviorQueries
+                .map((q) => {
+                    const words = String(q).trim().split(/\s+/);
+                    return words.length > 15 ? `${words.slice(0, 15).join(' ')}…` : q;
+                })
+                .slice(0, 3);
+        }
+    }
+
     return analysisJson;
 }
 
@@ -2095,6 +2121,35 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
     return { prompt, postPlan, tags, angle, promptKey, lang };
 }
 
+// angleType 다양성 보정 (모두 동일한 경우 분산)
+function diversifyAngles(blogPosts) {
+    if (!Array.isArray(blogPosts) || blogPosts.length < 3) return blogPosts;
+    const angles = blogPosts.map((p) => p?.angleType);
+    const allSame = angles.every((a) => a === angles[0]);
+    if (!allSame) return blogPosts;
+
+    const pool = ['expose', 'guide', 'compare'];
+    blogPosts.forEach((post, i) => {
+        if (!post || typeof post !== 'object') return;
+        post.angleType = pool[i % pool.length];
+    });
+    logger.warn('[Analysis] angleType 전부 동일 → 강제 분산 적용');
+    return blogPosts;
+}
+
+// contentDepth 다양성 보정 (모두 Normal인 경우만 최소 분산)
+function diversifyContentDepth(blogPosts) {
+    if (!Array.isArray(blogPosts) || blogPosts.length < 3) return blogPosts;
+    const depths = blogPosts.map((p) => p?.contentDepth);
+    const allNormal = depths.every((d) => d === 'Normal');
+    if (!allNormal) return blogPosts;
+
+    blogPosts[0].contentDepth = 'Snack';
+    blogPosts[blogPosts.length - 1].contentDepth = 'Deep-Dive';
+    logger.warn('[Analysis] contentDepth 전부 Normal → Snack/Normal/Deep-Dive로 분산');
+    return blogPosts;
+}
+
 app.post('/api/debug/prompt-preview', async (req, res) => {
     try {
         const { stage, trends, manualText, config, region = 'KR', postPlan } = req.body || {};
@@ -2247,6 +2302,10 @@ app.post('/api/analyze', async (req, res) => {
         const parsed = JSON.parse(text);
         // [v3.0] 실측 metrics 덮어쓰기 → 그 다음 priority 태깅
         const patched = applyMeasuredMetricsToAnalysis(parsed, measuredMetrics);
+        if (Array.isArray(patched.blogPosts)) {
+            patched.blogPosts = diversifyAngles(patched.blogPosts);
+            patched.blogPosts = diversifyContentDepth(patched.blogPosts);
+        }
         const analysisJson = annotateAnalysisPriority(patched, {
             burstHardFilterEnabled: config?.burstHardFilterEnabled !== false
         });

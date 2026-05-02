@@ -70,17 +70,17 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                         },
                         required: ["lifecycle", "targetAudience"]
                     },
-                    category: { type: "string", enum: ["Tech and IT", "Finance", "Life and Health", "Entertainment"] },
+                    category: { type: "string", enum:["Tech and IT", "Finance", "Life and Health", "Entertainment"] },
                     targetKeyword: { type: "string" },
                     mainKeyword: { type: "string" },
                     newsSearchQuery: { type: "string" },
                     angleType: { type: "string", enum: ["expose", "guide", "compare"] },
                     searchIntent: { type: "string" },
-                    // KR: "Snack", EN: "Bite-sized" — 두 값 모두 허용 (downstream 은 단순 문자열로만 사용)
-                    contentDepth: { type: "string", enum: ["Snack", "Bite-sized", "Normal", "Deep-Dive"] },
+                    contentDepth: { type: "string", enum:["Snack", "Bite-sized", "Normal", "Deep-Dive"] },
                     conclusionType: { type: "string", enum: ["Q&A", "Summary", "CTA", "Thought"] },
                     shoppableKeyword: { type: "string", nullable: true },
                     coreFact: { type: "string" },
+                    painScore: { type: "integer", minimum: 3, maximum: 15 },
                     viralTitles: {
                         type: "object",
                         properties: {
@@ -111,41 +111,12 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     coreMessage: { type: "string" },
                     searchVolume: { type: "integer" },
                     documentCount: { type: "integer" },
-                    competitionIndex: { type: "number" },
-                    // [v2.7] 신생 블로그 SEO 보강용 4종 (optional — 모델이 빼먹어도 본문 생성은 그대로 진행)
-                    painScore: { type: "integer", minimum: 3, maximum: 15 },
-                    serpDifferentiation: { type: "string" },
-                    searchBehaviorQueries: { type: "array", items: { type: "string" } },
-                    queryConfidence: { type: "string", enum: ["High", "Medium", "Low"] },
-                    infoGainAngle: {
-                        type: "object",
-                        properties: {
-                            type: { type: "string", enum: ["hidden_risk", "counter_intuitive", "historical_comparison"] },
-                            description: { type: "string" }
-                        },
-                        required: ["type", "description"]
-                    },
-                    ymylBypassStrategy: {
-                        type: "object",
-                        properties: {
-                            applied: { type: "boolean" },
-                            method: {
-                                type: "string",
-                                enum: ["Troubleshooting", "Micro-Targeting", "Side-Effect", "None"]
-                            },
-                            reasoning: { type: "string" }
-                        },
-                        required: ["applied", "method", "reasoning"]
-                    },
-                    sourceUrls: { type: "array", items: { type: "string" } }
+                    competitionIndex: { type: "number" }
                 },
-                required: [
+                required:[
                     "trafficStrategy", "category", "targetKeyword", "mainKeyword", "newsSearchQuery", "angleType", "searchIntent",
-                    "contentDepth", "conclusionType", "coreFact", "viralTitles", "metaDescription",
-                    "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "lsiKeywords",
-                    "imageSearchKeywords", "coreMessage", "painScore", "serpDifferentiation", 
-                    "searchBehaviorQueries", "queryConfidence", "infoGainAngle", "ymylBypassStrategy",
-                    "searchVolume", "documentCount", "competitionIndex"
+                    "contentDepth", "conclusionType", "coreFact", "painScore", "viralTitles", "metaDescription",
+                    "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "imageSearchKeywords", "coreMessage"
                 ]
             }
         }
@@ -206,7 +177,7 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
 
     for (const post of analysisResult.blogPosts) {
         const painScore = Number.isInteger(post.painScore) ? post.painScore : null;
-        const confidence = typeof post.queryConfidence === 'string' ? post.queryConfidence : null;
+        const confidence = typeof post.painScore === 'string' ? post.painScore : null;
         const compIdx = typeof post.competitionIndex === 'number' ? post.competitionIndex : null;
         const searchVolume = typeof post.searchVolume === 'number' ? post.searchVolume : null;
         const documentCount = typeof post.documentCount === 'number' ? post.documentCount : null;
@@ -227,11 +198,7 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — Burst 하드필터로 review 강등`);
         } else if (painScore === null && confidence === null) {
             priority = 'review';
-            reason = 'painScore/queryConfidence 누락';
-        } else if (confidence === 'Low') {
-            priority = 'review';
-            reason = 'queryConfidence=Low';
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — queryConfidence=Low`);
+            reason = 'painScore 누락';
         } else if (compIdx !== null && compIdx > COMPETITION_HARD_LIMIT) {
             if (seoViabilityScore >= 7) {
                 priority = 'secondary';
@@ -261,7 +228,7 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
             painScore,
             modelPainScore: painScore,
             seoViabilityScore,
-            queryConfidence: confidence,
+            
             competitionIndex: compIdx,
             searchVolume,
             documentCount
@@ -1948,10 +1915,10 @@ function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
         post.competitionIndex = ci;
     }
 
-    // searchBehaviorQueries 길이/개수 보정 (프롬프트 지시 불이행 대비)
+    // 길이/개수 보정 (프롬프트 지시 불이행 대비)
     for (const post of analysisJson.blogPosts || []) {
-        if (Array.isArray(post.searchBehaviorQueries)) {
-            post.searchBehaviorQueries = post.searchBehaviorQueries
+        if (Array.isArray(post.faq)) {
+            post.faq = post.faq
                 .map((q) => {
                     const words = String(q).trim().split(/\s+/);
                     return words.length > 15 ? `${words.slice(0, 15).join(' ')}…` : q;
@@ -2097,15 +2064,12 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
         seoKeywords: tags.join(', '),
         lsiKeywords: postPlan.lsiKeywords ? (Array.isArray(postPlan.lsiKeywords) ? postPlan.lsiKeywords.join(', ') : postPlan.lsiKeywords) : '',
         coreMessage: postPlan.coreMessage,
-        serpDifferentiation: postPlan.serpDifferentiation || '',
         lifecycle: postPlan.trafficStrategy?.lifecycle || '',
         category: postPlan.category || '',
         shoppableKeyword: postPlan.shoppableKeyword || '',
         faq: Array.isArray(postPlan.faq) ? postPlan.faq.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n\n') : '',
         metaDescription: postPlan.metaDescription || '',
         targetAudience: postPlan?.trafficStrategy?.targetAudience || postPlan?.targetAudience || '일반 독자',
-        searchBehaviorQueries: Array.isArray(postPlan.searchBehaviorQueries) ? postPlan.searchBehaviorQueries.join('\n') : '',
-        infoGainAngle: postPlan.infoGainAngle ? `[차별화 앵글: ${postPlan.infoGainAngle.type}]\n${postPlan.infoGainAngle.description}` : '',
         source_urls: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.sourceUrls) && postPlan.enrichedFacts.sourceUrls.length > 0)
             ? postPlan.enrichedFacts.sourceUrls.join('\n')
             : (Array.isArray(postPlan.sourceUrls) ? postPlan.sourceUrls.join('\n') : ''),
@@ -2449,6 +2413,13 @@ async function enrichPostPlan(postPlan, region = 'KR') {
                 results = await searchNewsAPI(searchBase);
             } else {
                 results = await searchNaverNews(searchBase);
+                results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
+                
+                // 네이버 단일 키워드 재검색마저 실패했을 경우 최후의 보루로 NewsAPI 폴백
+                if (results.length === 0) {
+                    logger.info(`[Enrich] 네이버 뉴스 단일 키워드 결과 없음. NewsAPI 폴백 검색 시도: ${searchBase}`);
+                    results = await searchNewsAPI(searchBase);
+                }
             }
             results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
         }

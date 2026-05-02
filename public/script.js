@@ -789,24 +789,11 @@ function renderAIAnalysis(data) {
         const meta = PRIORITY_META[priority];
         const badgeHtml = meta
             ? `<span class="priority-badge badge-${priority}" title="${esc(meta.title)}">${meta.icon} ${meta.label}</span>`
-            : `<span class="priority-badge badge-unknown" title="legacy 응답 — painScore/queryConfidence 필드 없음">? LEGACY</span>`;
-
-        // [v2.7] painScore / queryConfidence
+            : `<span class="priority-badge badge-unknown" title="legacy 응답 — painScore 필드 없음">? LEGACY</span>`;
+            // [v2.7] painScore
         const painScore = Number.isFinite(post.painScore) ? post.painScore : null;
-        const confidence = typeof post.queryConfidence === 'string' ? post.queryConfidence : null;
         const painBadge = painScore !== null
             ? `<span class="metric-chip" title="심각성+시급성+타격 합산 (3~15)">PAIN: <strong>${painScore}</strong>/15</span>`
-            : '';
-        const confBadge = confidence
-            ? `<span class="metric-chip confidence-${confidence.toLowerCase()}" title="실제 검색 수요 확신도">CONF: <strong>${esc(confidence)}</strong></span>`
-            : '';
-
-        // [v2.7] serpDifferentiation — 강조 박스
-        const serpGap = post.serpDifferentiation && post.serpDifferentiation.trim()
-            ? `<div class="serp-gap-box" title="이 글만이 다룰 정보 격차 — 도입부에서 선제 공략">
-                    <div class="serp-gap-label">&gt;&gt; SERP_GAP</div>
-                    <div class="serp-gap-body">${esc(post.serpDifferentiation)}</div>
-                </div>`
             : '';
 
         // [v3.1] Metrics Badge Row (TARGET_KW 추가)
@@ -831,26 +818,9 @@ function renderAIAnalysis(data) {
                </div>`
             : '';
 
-        // [v2.7] infoGainAngle — 강조 박스
-        const infoGain = post.infoGainAngle && post.infoGainAngle.description
-            ? `<div class="info-gain-box" title="이 글의 핵심 차별화 앵글">
-                    <div class="info-gain-label">&gt;&gt; INFO_GAIN [${esc(post.infoGainAngle.type)}]</div>
-                    <div class="info-gain-body">${esc(post.infoGainAngle.description)}</div>
-                </div>`
-            : '';
-
         // [v2.7] sourceUrls — 메타에 추가
         const sourceUrlsHtml = Array.isArray(post.sourceUrls) && post.sourceUrls.length
             ? `<div class="meta-item"><span>SOURCE_URLS:</span> ${post.sourceUrls.map(u => `<a href="${esc(u)}" target="_blank" style="color:var(--google-color)">[LINK]</a>`).join(' ')}</div>`
-            : '';
-
-        // [v2.7] searchBehaviorQueries — 칩 태그
-        const queries = Array.isArray(post.searchBehaviorQueries) ? post.searchBehaviorQueries.filter(Boolean) : [];
-        const queriesHtml = queries.length
-            ? `<div class="search-queries-row" title="독자가 실제 검색창에 칠 법한 구어체 문장">
-                    <span class="queries-label">SEARCH_BEHAVIOR:</span>
-                    ${queries.map(q => `<span class="query-chip">"${esc(q)}"</span>`).join('')}
-                </div>`
             : '';
 
         const cardClasses = ['post-card', 'marketing-card', `priority-${priority}`];
@@ -862,17 +832,17 @@ function renderAIAnalysis(data) {
                 <div class="card-header-row">
                     ${badgeHtml}
                     ${painBadge}
-                    ${confBadge}
+                    
                 </div>
                 ${post._meta?.reason ? `<div class="priority-reason-text">${esc(post._meta.reason)}</div>` : ''}
                 <div class="post-title" style="color:var(--text-color)">${esc(title)}</div>
-                ${serpGap}
+                
                 ${metricsHtml}
-                ${infoGain}
+                
                 <div class="post-reason"><span class="highlight-tag">CATEGORY:</span> ${esc(post.category)}</div>
                 <div class="post-reason"><span class="highlight-tag">SEARCH_INTENT:</span> ${esc(post.searchIntent)}</div>
                 <div class="post-reason"><span class="highlight-tag">TARGET_AUDIENCE:</span> ${esc(post.trafficStrategy?.targetAudience || 'N/A')}</div>
-                ${queriesHtml}
+                
                 <div class="post-meta">
                     <div class="meta-item"><span>MAIN_TREND:</span> <strong style="color:var(--namu-color)">${esc(post.mainKeyword)}</strong></div>
                     <div class="meta-item"><span>ANGLE:</span> ${esc(post.angleType || 'guide')}</div>

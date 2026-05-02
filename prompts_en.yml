@@ -149,16 +149,21 @@ _shared:
 tasks:
   # ===================================================================== #
   keyword_extraction:
-    persona: "A search data analyst who broadly collects practical query terms from raw trend signals."
+    persona: "A consumer-psychology profiler who predicts anxiety, desire, and the very next search someone types after skimming the headlines."
     instruction: |
-      Analyze the provided trend data and extract 20–30 keywords suitable for querying Naver search volume and document counts.
-      - Keywords must be in English.
-      - Review all provided sources in `sourceDescriptions` first, and keep extraction balanced so no single source dominates excessively.
-      - Prioritize concrete intent/situation keywords over isolated head nouns, while still allowing a small number of core head terms when truly necessary.
-      - Allow at most one space per keyword. In other words, every keyword must be 1-2 words only.
-      - [Important] Search volume lookup treats whitespace-insensitive variants as the same keyword (e.g., "real estate direct deal" and "realestatedirectdeal"), so keep only one natural form and avoid spacing-only duplicates.
-      - Remove near-duplicate keywords with the same meaning, and use remaining slots to cover more distinct trend topics.
-      - Output ONLY a JSON array of strings. Do not use markdown code blocks.
+      The trend data is a 'primary signal' people notice right now. Your job is NOT to mirror that headline as keywords.
+      Extract 20–30 real 2nd/3rd-degree queries a target reader would actually thumb-type into a phone search box ~30 minutes later—queries suitable for volume/document lookup.
+
+      🔥 [Absolute rules: Lazy Typist (mobile search)] 🔥
+      1. Pivot: Drop verbatim incident/policy/product names when you can; imagine the follow-up action, fear, or fix they chase next.
+      2. Format: Ban sentence-style queries and overstuffed phrases—they often read as zero-volume in APIs. People do not type essays. Use tight 2–3 core tokens (at most one space → effectively 1–2 English words or a very short phrase).
+      3. Universal micro-targeting by vertical: Never ship naked generic heads alone ("calculator", "how to apply", "best picks"). Match the topic vibe and blend one of these directions into each keyword:
+         - [Policy / Finance]: gray zones, niche jobs, penalties, denials, clawbacks (e.g., "probation severance pay", "second home acquisition tax", "contract worker unemployment")
+         - [Health / Beauty / Life]: side effects, worst mistakes, rare sensitivities, hidden hacks (e.g., "h pylori antibiotic side effects", "fine hair perm damage", "cold cucumber soup bitter fix")
+         - [IT / Gadgets / Tech]: fatal flaws, compatibility bugs, buried settings (e.g., "iphone transit wallet error", "ac electric bill spike settings")
+      4. Language & balance: Keywords must be in English. Review `sourceDescriptions` (if present), keep sources balanced, dedupe near-synonyms, and spend remaining slots on distinct angles.
+      5. Whitespace: Volume lookup collapses spacing variants—keep one natural surface form per idea, no spacing-only duplicates.
+      6. Output ONLY a JSON array of strings. No markdown fences.
     template: |
       [Input Trend Data]
       {{trends_data}}
@@ -179,16 +184,25 @@ tasks:
       The original content should be consumed very briefly only as bait to catch the reader's eye in the intro.
       The main topic of the post (the entire body) must pivot 180 degrees into "completely new related information you must know / prepare for right now," selecting one of the provided [2nd-degree Keyword Search Volume Metrics].
 
-      [Topic Pivot Example]
-      - 1st-degree Trend: "Apple Pay introduced domestically"
-      - ❌ Failed Plan (1-dimensional): "How to register for Apple Pay and where to use it"
-      - ✅ Successful Plan (2nd-degree Pivot): "Transit card bypass method Samsung Pay users must check before switching to iPhone" (Main keyword: iPhone transit card bypass)
+      [Three universal pivot strategies]
+      1. Troubleshooting (failure & guardrail angle): Focus on rejection stories, side effects, denial conditions, and moves to avoid. (e.g., swap plain "how to apply" for "three reasons applications get denied"; swap generic "glasses frames picks" for "worst frame mistakes for your face shape")
+      2. Micro-Targeting (hyper-specific reader): Not mass-market explainers—pick one occupation, condition, or edge case. (e.g., swap "severance calculator" for "11-month contract severance loophole"; swap "perm care" for "bleached-damaged hair perm survival guide")
+      3. Counter-Intuitive (pattern-break): Hidden upside/downside, contrarian truth. (e.g., swap "high-yield savings compare" for "who actually loses money with parking-account rates")
 
-      [How to use Metrics]
-      searchVolume and competitionIndex are not absolute answers, but reference data to peek at the 'direction of people's interest'. Do not blindly select them just because the numbers are high; prioritize the 2nd-degree keyword that can most sharply pierce the reader's Pain point.
+      [Cannibalization defense — mandatory]
+      Always read `[Published in the last 30 days]` appended below the metrics block. If the search intent is similar—even when wording differs—reject the topic and force a different category or pivot strategy.
 
-      [Fact-gathering newsSearchQuery]
-      This plan will undergo real-time search (Grounding) during the posting phase. To find accurate facts for the '2nd-degree Main Topic' you newly planned (not the '1st-degree trend'), you must write 1 sharp and concrete news search query.
+      [How to use Metrics — flexible, API-aware planning]
+      Metrics may skew entirely 🔴 red-ocean or show searchVolume 0 (unmeasurable) because of API quirks and spacing. Resolve conflicts with this stack rank:
+      1. [Tier 1 — golden gap]: If any keyword shows 🟢 Blue Ocean or 🟡 Moderate competition (`competitionLabel`), pick those first.
+      2. [Tier 2 — fake-zero long-tail]: If Tier 1 is empty, prefer high-Pain colloquial long-tails even when `searchVolume` reads 0—the API often undercounts real demand. (e.g., "PTO bridge vacation hacks")
+      3. [Tier 3 — red-ocean survival]: Only when every viable candidate is 🔴 Red Ocean; choose as last resort and force extreme Micro-Targeting to carve a niche.
+
+      [Fact-gathering newsSearchQuery (news API query)]
+      During posting the server enriches facts via a news search API (Naver News for KR, NewsAPI for US). These endpoints behave like keyword-style matching—full sentences, filler tokens, or chatty questions often return zero useful hits.
+      - ❌ Forbidden: year-stuffed titles, "guide", "explained", "differences", "overview", natural-language question strings.
+      - ✅ Required: 2–3 headline-style noun tokens separated by spaces (e.g., "acquisition tax first-time buyer", "CMA money market rates").
+      Target the newly planned 2nd-degree main topic (not the 1st-degree bait headline). Emit exactly one query string.
     template: |
       [1st-degree Trend Original (Use only as bait)]
       {{trends_data}}
@@ -202,7 +216,7 @@ tasks:
           {
             "trafficStrategy": { "lifecycle": "Evergreen", "targetAudience": "Concrete target in 1 line" },
             "targetKeyword": "The 2nd-degree keyword original form selected from metrics",
-            "newsSearchQuery": "Concrete news search query to find facts about the newly planned 2nd-degree topic",
+            "newsSearchQuery": "No sentences or filler. 2–3 core noun tokens the news API can match (e.g., acquisition tax first-time buyer)",
             "category": "Tech and IT | Finance | Life and Health | Entertainment",
             "angleType": "expose | guide | compare",
             "mainKeyword": "Long-tail keyword of the new main topic (noun form)",
@@ -238,9 +252,23 @@ tasks:
 
       [STEP 1: remove surface-level summaries + filter data]
       - Discard obvious summary lines (how-to/apply/intro) and prioritize hidden penalties, clawback clauses, exception conditions, and niche-only benefits.
-      - ❌ Do not select standalone ultra red-ocean keywords with competitionIndex > 5.0.
-      - ✅ Prioritize candidates with searchVolume >= 1,000 and competitionIndex <= 1.5.
+      - ❌ Do not select standalone ultra red-ocean keywords with competitionIndex > 5.0 when a credible 🟢/🟡 or fake-zero Pain long-tail exists.
+      - ✅ Apply the Metrics tier order spelled out under `[How to use Metrics — flexible, API-aware planning]` later in this prompt: 🟢/🟡 first → strong Pain long-tails even at searchVolume 0 → 🔴 red ocean only as last resort with extreme Micro-Targeting.
       - Anti-Cannibalization: if '[Published in the last 30 days]' exists, reject overlapping core topics immediately.
+
+      [Three universal pivot strategies — align plans with these]
+      1. Troubleshooting (failure & guardrail angle): rejection paths, side effects, denial rules, actions to avoid—same spirit as trend_analysis.
+      2. Micro-Targeting (hyper-specific reader): one micro cohort or situation only—not generic explainers.
+      3. Counter-Intuitive (pattern-break): hidden tips or who loses money when following conventional advice.
+
+      [Cannibalization defense — mandatory]
+      Re-check `[Published in the last 30 days]` in the appended context. Similar intent beats similar wording: reject and pivot to a fresh category or strategy.
+
+      [How to use Metrics — flexible, API-aware planning]
+      Metrics may skew entirely 🔴 red-ocean or show searchVolume 0 (unmeasurable) because of API quirks and spacing. Resolve conflicts with this stack rank:
+      1. [Tier 1 — golden gap]: If any keyword shows 🟢 Blue Ocean or 🟡 Moderate competition (`competitionLabel`), pick those first.
+      2. [Tier 2 — fake-zero long-tail]: If Tier 1 is empty, prefer high-Pain colloquial long-tails even when `searchVolume` reads 0—the API often undercounts real demand.
+      3. [Tier 3 — red-ocean survival]: Only when every viable candidate is 🔴 Red Ocean; choose as last resort and force extreme Micro-Targeting to carve a niche.
 
       [STEP 2: topic mutation process]
       Transform ideas through one mutation path:
@@ -261,6 +289,11 @@ tasks:
       - ✅ Best (problem-solving long-tail): "delivery subsidy document rejection"
       - ✅ Best (micro-target long-tail): "11-month contract severance report"
       - Blacklist: eligibility, how to apply, guide, full summary, whether, precautions.
+
+      [News API newsSearchQuery (posting-phase enrichment)]
+      Same constraint as trend_analysis: posting calls NewsAPI (US) / Naver News (KR). Use tight headline-style tokens, not prose.
+      - ❌ Forbidden: long natural-language questions; filler like guide, explained, differences, overview, complete summary.
+      - ✅ Required: 2–3 noun tokens with spaces (e.g., "CMA rates comparison", "delivery subsidy clawback").
 
       [🔥 Emerging-Blog SEO Boost Rules — MANDATORY]
       <<analysis_seo_rules.pain_score>>
@@ -301,8 +334,8 @@ tasks:
       ✓ Is the painScore sum logically justified, and if below 6, did you resharpen the plan?
       ✓ Is mainKeyword narrowed to a noun-style 3-4 term long-tail rather than a sentence?
       ✓ Are the 3 plans not all using the same angleType?
-      ✓ Did you avoid selecting standalone ultra red-ocean keywords with competitionIndex > 5.0?
-      ✓ Did you prioritize keywords with searchVolume >= 1,000 and competitionIndex <= 1.5?
+      ✓ Did you avoid 🔴 red-ocean picks when a better 🟢/🟡 or credible fake-zero Pain long-tail existed?
+      ✓ Did you apply the Metrics tier order (🟢/🟡 → fake-zero Pain → 🔴 + Micro-Targeting)?
       ✓ Did each topic pass through at least one mutation route instead of raw-keyword reuse?
     template: |
       [User Input Text]
@@ -321,7 +354,7 @@ tasks:
               "targetAudience": "A one-line, concrete reader persona"
             },
             "targetKeyword": "The Naver search term used as the basis for these metrics",
-            "newsSearchQuery": "Specific news query used in posting phase for latest fact enrichment",
+            "newsSearchQuery": "No sentences/filler. 2–3 noun tokens for NewsAPI/Naver (e.g., CMA rates clawback)",
             "searchVolume": 0,
             "documentCount": 0,
             "competitionIndex": 0.0,

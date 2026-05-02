@@ -1118,13 +1118,13 @@ async function fetchWithRetry(name, fetchFn, retries = 2) {
 }
 
 const SOURCE_ITEM_COUNTS = {
-  signal: 10,
   ppomppu: 7,
-  gNewsBiz: 7,
-  gNewsLabor: 7,
   aha: 7,
   fss: 5,
   policy: 5,
+  gNewsLabor: 7,
+  gNewsBiz: 7,
+  signal: 10,
   google: 10,
   reddit: 10,
   redditScams: 10,
@@ -1217,6 +1217,31 @@ async function getSignalTrends(limit = 10) {
   });
 }
 
+// Google News RSS: 동일 피드(Biz 또는 Labor) 안에서만 제목 기준 중복 제거 (두 피드 간 교차 제거는 하지 않음)
+function normalizeGoogleNewsTitleKey(rawTitle) {
+  if (!rawTitle || typeof rawTitle !== 'string') return '';
+  return rawTitle
+    .replace(/ - .+$/, '')
+    .replace(/[\s\u00a0\u3000]+/g, ' ')
+    .replace(/[""''`]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function dedupeGoogleNewsRssItems(sortedItems, limit) {
+  const seen = new Set();
+  const out = [];
+  for (const item of sortedItems) {
+    const key = normalizeGoogleNewsTitleKey(item.title?.[0] || '');
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 // 3. Google News (자영업/소상공인/세금)
 async function getGoogleNewsBiz(limit = 7) {
   return fetchWithRetry('Google News Biz', async () => {
@@ -1230,8 +1255,10 @@ async function getGoogleNewsBiz(limit = 7) {
     if (items.length === 0) throw new Error('Google News Biz returned 0 items');
 
     items.sort((a, b) => new Date(b.pubDate?.[0] || 0) - new Date(a.pubDate?.[0] || 0));
+    const uniqueItems = dedupeGoogleNewsRssItems(items, limit);
+    if (uniqueItems.length === 0) throw new Error('Google News Biz returned 0 items after dedupe');
 
-    return items.slice(0, limit).map((item, i) => ({
+    return uniqueItems.map((item, i) => ({
       rank: i + 1,
       keyword: `[뉴스/경제] ${(item.title?.[0] || '').replace(/ - .+$/, '')}`,
       url: item.link?.[0] || '',
@@ -1253,8 +1280,10 @@ async function getGoogleNewsLabor(limit = 7) {
     if (items.length === 0) throw new Error('Google News Labor returned 0 items');
 
     items.sort((a, b) => new Date(b.pubDate?.[0] || 0) - new Date(a.pubDate?.[0] || 0));
+    const uniqueItems = dedupeGoogleNewsRssItems(items, limit);
+    if (uniqueItems.length === 0) throw new Error('Google News Labor returned 0 items after dedupe');
 
-    return items.slice(0, limit).map((item, i) => ({
+    return uniqueItems.map((item, i) => ({
       rank: i + 1,
       keyword: `[뉴스/노동] ${(item.title?.[0] || '').replace(/ - .+$/, '')}`,
       url: item.link?.[0] || '',
@@ -1643,35 +1672,35 @@ app.get('/api/trends', async (req, res) => {
     });
     } else {
     const krLimits = {
-      signal: getSourceLimit('signal', itemScale),
-      gNewsBiz: getSourceLimit('gNewsBiz', itemScale),
-      gNewsLabor: getSourceLimit('gNewsLabor', itemScale),
+      ppomppu: getSourceLimit('ppomppu', itemScale),
       aha: getSourceLimit('aha', itemScale),
       fss: getSourceLimit('fss', itemScale),
       policy: getSourceLimit('policy', itemScale),
-      ppomppu: getSourceLimit('ppomppu', itemScale)
+      gNewsLabor: getSourceLimit('gNewsLabor', itemScale),
+      gNewsBiz: getSourceLimit('gNewsBiz', itemScale),
+      signal: getSourceLimit('signal', itemScale)
     };
-    const [signal, gNewsBiz, gNewsLabor, aha, fss, policy, ppomppu] = await Promise.all([
-      checkSource('signal') ? getSignalTrends(krLimits.signal) : Promise.resolve([]),
-      checkSource('gNewsBiz') ? getGoogleNewsBiz(krLimits.gNewsBiz) : Promise.resolve([]),
-      checkSource('gNewsLabor') ? getGoogleNewsLabor(krLimits.gNewsLabor) : Promise.resolve([]),
+    const [ppomppu, aha, fss, policy, gNewsLabor, gNewsBiz, signal] = await Promise.all([
+      checkSource('ppomppu') ? getPpomppuHotDeals(krLimits.ppomppu) : Promise.resolve([]),
       checkSource('aha') ? getAhaTrends(krLimits.aha) : Promise.resolve([]),
       checkSource('fss') ? getFssAlerts(krLimits.fss) : Promise.resolve([]),
       checkSource('policy') ? getPolicyBriefing(krLimits.policy) : Promise.resolve([]),
-      checkSource('ppomppu') ? getPpomppuHotDeals(krLimits.ppomppu) : Promise.resolve([])
+      checkSource('gNewsLabor') ? getGoogleNewsLabor(krLimits.gNewsLabor) : Promise.resolve([]),
+      checkSource('gNewsBiz') ? getGoogleNewsBiz(krLimits.gNewsBiz) : Promise.resolve([]),
+      checkSource('signal') ? getSignalTrends(krLimits.signal) : Promise.resolve([])
     ]);
     res.json({
         timestamp: new Date().toISOString(),
         region,
-        signal, gNewsBiz, gNewsLabor, aha, fss, policy, ppomppu,
+        ppomppu, aha, fss, policy, gNewsLabor, gNewsBiz, signal,
         sourceDescriptions: {
-            signal: "네이트 실시간 검색어. 포털 기반의 시의성 신호를 빠르게 반영.",
-            gNewsBiz: "구글 뉴스 (자영업/세금). 소상공인 지원금, 세금 관련 최신 뉴스.",
-            gNewsLabor: "구글 뉴스 (노동법/실업급여). 직장인 권리 및 실업급여 관련 팩트.",
+            ppomppu: "뽐뿌 정보/강좌 게시판. 재테크, 핫딜, 가성비에 매우 민감한 스마트 컨슈머들이 공유하는 생활 밀착형 꿀팁 및 유용한 정보.",
             aha: "Aha(아하) 전문가 Q&A. 사용자의 구체적이고 현실적인 질문과 전문가 답변.",
             fss: "금융감독원 소비자경보. 신종 보이스피싱, 코인 사기 수법, 불법 사금융 등 독자의 금전적 손실(Loss Aversion)을 방지하기 위한 경고성 정보.",
             policy: "대한민국 정책브리핑. 정부 보조금, 청년 지원금, 세금 환급 등 독자의 금전적 이득과 실생활에 직결되는 정책 정보(Welfare).",
-            ppomppu: "뽐뿌 정보/강좌 게시판. 재테크, 핫딜, 가성비에 매우 민감한 스마트 컨슈머들이 공유하는 생활 밀착형 꿀팁 및 유용한 정보."
+            gNewsLabor: "구글 뉴스 (노동법/실업급여). 직장인 권리 및 실업급여 관련 팩트.",
+            gNewsBiz: "구글 뉴스 (자영업/세금). 소상공인 지원금, 세금 관련 최신 뉴스.",
+            signal: "네이트 실시간 검색어. 포털 기반의 시의성 신호를 빠르게 반영."
         }
     });
     }
@@ -2406,19 +2435,22 @@ async function enrichPostPlan(postPlan, region = 'KR') {
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
         results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
 
-        // 결과가 없으면 mainKeyword 단독으로 최후 검색 (fallback)
+        // 1차(정밀 쿼리+엔티티) 결과 없음 → 긴 newsSearchQuery 재사용 대신 짧은 mainKeyword로 폴백 (API AND 매칭 친화)
         if (results.length === 0) {
-            logger.info(`[Enrich] 정밀 쿼리 결과 없음(또는 너무 오래됨). 단일 키워드 검색 시도: ${searchBase}`);
+            const fallbackKw =
+                String(postPlan.mainKeyword || '').trim() ||
+                String(postPlan.targetKeyword || '').trim() ||
+                searchBase;
+            logger.info(`[Enrich] 정밀 쿼리 결과 없음(또는 너무 오래됨). 안전한 단일 키워드(mainKeyword 우선)로 폴백 검색: ${fallbackKw}`);
             if (region === 'US') {
-                results = await searchNewsAPI(searchBase);
+                results = await searchNewsAPI(fallbackKw);
             } else {
-                results = await searchNaverNews(searchBase);
+                results = await searchNaverNews(fallbackKw);
                 results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
-                
-                // 네이버 단일 키워드 재검색마저 실패했을 경우 최후의 보루로 NewsAPI 폴백
+
                 if (results.length === 0) {
-                    logger.info(`[Enrich] 네이버 뉴스 단일 키워드 결과 없음. NewsAPI 폴백 검색 시도: ${searchBase}`);
-                    results = await searchNewsAPI(searchBase);
+                    logger.info(`[Enrich] 네이버 폴백 실패. 최후의 수단 NewsAPI 시도: ${fallbackKw}`);
+                    results = await searchNewsAPI(fallbackKw);
                 }
             }
             results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);

@@ -34,27 +34,20 @@
     </header>
 
     <main class="grid">
-      <!-- Google News Biz -->
-      <section class="panel google-panel">
-        <h2 class="panel-title">> GOOGLE_NEWS_BIZ <span class="blink">_</span></h2>
-        <ul class="trend-list" id="google-list">
+      <!-- KR 소스 순서: 뽐뿌 → 아하 → FSS → 정책 → 구글뉴스 노동 → 구글뉴스 비즈 → 네이트 -->
+      <!-- Ppomppu Hot Deals -->
+      <section class="panel ppomppu-panel">
+        <h2 class="panel-title">> PPOMPPU_INFO <span class="blink">_</span></h2>
+        <ul class="trend-list" id="ppomppu-list">
           <li class="loading">ESTABLISHING CONNECTION...</li>
         </ul>
       </section>
 
-      <!-- Nate -->
-      <section class="panel signal-panel">
-        <h2 class="panel-title">> NATE_KR <span class="blink">_</span></h2>
-        <ul class="trend-list" id="signal-list">
+      <!-- Aha Q&A -->
+      <section class="panel instiz-panel">
+        <h2 class="panel-title">> AHA_QNA <span class="blink">_</span></h2>
+        <ul class="trend-list" id="aha-list">
           <li class="loading">ESTABLISHING CONNECTION...</li>
-        </ul>
-      </section>
-
-      <!-- Google News Labor -->
-      <section class="panel namu-panel">
-        <h2 class="panel-title">> GOOGLE_NEWS_LABOR <span class="blink">_</span></h2>
-        <ul class="trend-list" id="gnews-labor-list">
-          <li class="loading">FETCHING RSS FEED...</li>
         </ul>
       </section>
 
@@ -74,18 +67,26 @@
         </ul>
       </section>
 
-      <!-- Ppomppu Hot Deals -->
-      <section class="panel ppomppu-panel">
-        <h2 class="panel-title">> PPOMPPU_INFO <span class="blink">_</span></h2>
-        <ul class="trend-list" id="ppomppu-list">
+      <!-- Google News Labor -->
+      <section class="panel namu-panel">
+        <h2 class="panel-title">> GOOGLE_NEWS_LABOR <span class="blink">_</span></h2>
+        <ul class="trend-list" id="gnews-labor-list">
+          <li class="loading">FETCHING RSS FEED...</li>
+        </ul>
+      </section>
+
+      <!-- Google News Biz -->
+      <section class="panel google-panel">
+        <h2 class="panel-title">> GOOGLE_NEWS_BIZ <span class="blink">_</span></h2>
+        <ul class="trend-list" id="google-list">
           <li class="loading">ESTABLISHING CONNECTION...</li>
         </ul>
       </section>
 
-      <!-- Aha Q&A -->
-      <section class="panel instiz-panel">
-        <h2 class="panel-title">> AHA_QNA <span class="blink">_</span></h2>
-        <ul class="trend-list" id="aha-list">
+      <!-- Nate -->
+      <section class="panel signal-panel">
+        <h2 class="panel-title">> NATE_KR <span class="blink">_</span></h2>
+        <ul class="trend-list" id="signal-list">
           <li class="loading">ESTABLISHING CONNECTION...</li>
         </ul>
       </section>
@@ -186,13 +187,13 @@
                   <div class="setting-group">
                       <label>ACTIVE_DATA_SOURCES</label>
                       <div class="checkbox-group" id="src-group-kr">
-                          <label><input type="checkbox" id="src-nate" checked> NATE_TRENDS</label>
-                          <label><input type="checkbox" id="src-gnews-biz" checked> GOOGLE_NEWS_BIZ</label>
-                          <label><input type="checkbox" id="src-gnews-labor" checked> GOOGLE_NEWS_LABOR</label>
+                          <label><input type="checkbox" id="src-ppomppu" checked> PPOMPPU_INFO</label>
                           <label><input type="checkbox" id="src-aha" checked> AHA_QNA</label>
                           <label><input type="checkbox" id="src-fss" checked> FSS_ALERTS</label>
                           <label><input type="checkbox" id="src-policy" checked> POLICY_BRIEFING</label>
-                          <label><input type="checkbox" id="src-ppomppu" checked> PPOMPPU_INFO</label>
+                          <label><input type="checkbox" id="src-gnews-labor" checked> GOOGLE_NEWS_LABOR</label>
+                          <label><input type="checkbox" id="src-gnews-biz" checked> GOOGLE_NEWS_BIZ</label>
+                          <label><input type="checkbox" id="src-nate" checked> NATE_TRENDS</label>
                       </div>
                       <div class="checkbox-group hidden" id="src-group-us">
                           <label><input type="checkbox" id="src-google-us" checked> GOOGLE_TRENDS</label>

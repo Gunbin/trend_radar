@@ -31,8 +31,9 @@ _shared:
     
     - "**[T2] Structural flexibility (Anti-Template):** Treat `{{outputFormat}}` as directional guidance, not a fixed template. Do not follow the sequence mechanically; merge/split/reorder sections when the topic demands it, and add new H2 labels if they improve completion clarity. Single success criterion: can the reader actually complete the task using this post alone?"
     - "**[T2] Source concealment vs information exposure (split protocol):**\n        [Conceal — abstract these]: raw community or tabloid-style source labels from the input (e.g. reddit, instiz, buzzfeed tier where gossip), and throwaway reference-only dates. Paraphrase as 'a recent online thread' etc. Pasting bracket placeholders ([ ]) or system tokens into the body is fatal.\n        [Expose — state plainly]: official agencies (FTC, SEC, IRS, CDC…), real deadlines, percentages, dollars, and externally verified official facts. Put confirmed URLs in `### [References]` when you have them.\n        (CRITICAL: never print '[Google Search]' or similar system traces.)"
-    - "**[T2] Enriched facts priority:** When `{{enrichedFacts}}` is provided, use them as the first-line evidence; copy numbers, dates, and org names exactly. Do not add statistics that are not there."
-    - "**[T2] Technical SEO — FAQ + schema:** Add FAQ before the end per `{{contentDepth}}`: **Snack/Bite-sized = 1 core FAQ only (no JSON-LD)**, **Normal = 2–3 FAQs + FAQPage JSON-LD**, **Deep-Dive = 4–5 FAQs + FAQPage JSON-LD**. **Do not** use a dull `### FAQ` or generic 'Frequently Asked Questions' as the only heading — use a topic-tight, engaging H3. Phrase questions with ``-style colloquial language. Important: FAQPage JSON-LD is automatically injected into `<head>` from the front matter `faq:` array, so never print FAQPage JSON-LD in the body (including ```json code blocks)."
+    - "**[T2] Official vs community facts:** Use `{{newsFacts}}` for official/news-backed claims; use `{{kinPainPoints}}` only for reader pain, edge cases, and lived-friction narrative. **Never** put Kin/Q&A source URLs in `### [References]` (news URLs only)."
+    - "**[T2] Mandatory deep expansion of injected facts — no lazy one-line summaries:** You must **not** compress `{{newsFacts}}` or `{{kinPainPoints}}` into a throwaway line like \"recent articles say…\" or \"people online worry…\". \n 1) **News facts:** unpack **why** the phenomenon/policy matters and tie it to supplied figures/context — aim for **at least 3–4 short paragraphs** per major news fact cluster before moving on (still obey [T1]: **never invent** numbers absent from inputs). \n 2) **Kin / forum pain excerpts:** flesh out the asker's worst-case crisis (failure, denial, clawback spiral, catastrophic loss framing) **without inventing fabricated biographies**, then supply expert-style troubleshooting—not vibe-only moralizing. \n 3) When integrating multiple injected facts, give each substantive fact cluster its **own `###` H3** so visible length and information density spike (this directly fights LLM laziness)."
+    - "**[T2] Technical SEO — FAQ + schema:** Add FAQ before the end per `{{contentDepth}}`: **Snack = 1 core FAQ only (no JSON-LD)**, **Normal = 2–3 FAQs + FAQPage JSON-LD**, **Deep-Dive = 4–5 FAQs + FAQPage JSON-LD**. **Do not** use a dull `### FAQ` or generic 'Frequently Asked Questions' as the only heading — use a topic-tight, engaging H3. Phrase questions with ``-style colloquial language. Important: FAQPage JSON-LD is automatically injected into `<head>` from the front matter `faq:` array, so never print FAQPage JSON-LD in the body (including ```json code blocks)."
     - "**[T2] References (SEO anchor):** If `{{source_urls}}` exists, end the post with `### [References]` and a bullet list of `- [Title](URL)`. If no URLs, omit the whole section."
     # ══ TIER 3 — STYLE (apply after T1+T2) ══
     - "**[T3] Information density vs. volume balance:** Match `{{contentDepth}}`. Drop filler backstory, forced empathy, and fake scenarios. Ban hollow closers like 'it can be said that…'. Keep paragraphs short (2–3 sentences) but stack **4–5+** short paragraphs per H2 where needed. Never repeat a mechanical example in every H2. Deep-dive only in 1–2 key sections."
@@ -48,7 +49,7 @@ _shared:
     - |
       "**Visual element insertion (Image / Mermaid / Markmap):**
             Follow the **visual slot range** below based on `{{contentDepth}}` (one slot = one image **or** one Mermaid/Markmap code block in that position):
-            - **Snack** or **Bite-sized** : **1–2 slots** — 1 is often enough for short posts.
+            - **Snack** : **1–2 slots** — 1 is often enough for short posts.
             - **Normal**            : **1–3 slots** — start with 1–2; use 3 only when information density justifies it.
             - **Deep-Dive**         : **2–4 slots** — scale with section count and complexity.
             Shared rule: never add visuals just to hit a number. Place them only where comprehension clearly improves.
@@ -97,12 +98,11 @@ _shared:
   post_writing_template_blocks:
     trust_anchor: |
       [Trust Anchors — must appear in the body]
-      ① enrichedFacts (verified facts): {{enrichedFacts}}
-         → Use externally verified numbers, dates, and institution names as-is.
-      ② coreFact (planning fact): {{coreFact}}
-         → Use when ① is missing in a section. Never invent numbers outside it.
-      ③ If both are weak or empty:
-         → Write with official names, institutions, and dates; skip numeric claims.
+      ① Official facts (news): {{newsFacts}}
+         → Ground dates, agencies, and numeric claims here (no fabrication).
+      ② Community pain (Kin): {{kinPainPoints}}
+         → Use for reader friction, edge cases, and troubleshooting angles only.
+      ③ Planning fact: {{coreFact}}
     plan_fields: |
       [Post Plan]
       - Category: {{category}}
@@ -119,7 +119,6 @@ _shared:
       - LSI Keywords: {{lsiKeywords}}
       - Message: {{coreMessage}}
       - Format Structure (Dynamic Templating): {{outputFormat}}
-      - Enriched Facts: {{enrichedFacts}}
       - Source URLs: {{source_urls}}
       - Images: {{context_url_1}}, {{context_url_2}}, {{context_url_3}}
       - FAQ Data: {{faq}}
@@ -141,10 +140,8 @@ _shared:
         and output exactly one integer between 3 and 15.
 
         Interpretation: 9+ = urgent/loss-prevention, 6-8 = compare/consideration, 5 or below = re-plan recommended
-
-        Mandatory down-adjustment rules:
-        - If searchVolume is 0 or near-zero, do NOT keep painScore at 9+
-        Final priority is re-scored server-side from numeric metrics, so avoid emotional inflation.
+        * Note: Do NOT artificially lower the score just because search volume reads 0 or is unmeasurable. If it's a 'Fake Zero' keyword with real human suffering, score it honestly high (up to 15 when justified).
+        Final `priority` may still be re-scored server-side from metrics—your job here is to reflect reader pain, not to pre-empt API zeros with a forced low painScore. Avoid groundless emotional inflation, but do not slash pain solely because volume is 0.
 
 tasks:
   # ===================================================================== #
@@ -198,11 +195,12 @@ tasks:
       2. [Tier 2 — fake-zero long-tail]: If Tier 1 is empty, prefer high-Pain colloquial long-tails even when `searchVolume` reads 0—the API often undercounts real demand. (e.g., "PTO bridge vacation hacks")
       3. [Tier 3 — red-ocean survival]: Only when every viable candidate is 🔴 Red Ocean; choose as last resort and force extreme Micro-Targeting to carve a niche.
 
-      [Fact-gathering newsSearchQuery (news API query)]
-      During posting the server enriches facts via a news search API (Naver News for KR, NewsAPI for US). These endpoints behave like keyword-style matching—full sentences, filler tokens, or chatty questions often return zero useful hits.
-      - ❌ Forbidden: year-stuffed titles, "guide", "explained", "differences", "overview", natural-language question strings.
-      - ✅ Required: 2–3 headline-style noun tokens separated by spaces (e.g., "acquisition tax first-time buyer", "CMA money market rates").
-      Target the newly planned 2nd-degree main topic (not the 1st-degree bait headline). Emit exactly one query string.
+      [Two-track fact queries — serendipity, not confirmation bias]
+      Design **two broad-net queries** so posting enrichment surfaces **unexpected**, useful facts—**not** self-fulfilling hits that echo your headline.
+      ⚠️ Do **NOT** bake your predetermined article thesis into either string (confirmation bias): many news APIs behave like loose AND matchers; stuffing every noun from your takeaway returns brochures, fluff PR, or unrelated SEO pages that accidentally match all tokens. Cast a **short, wide hook** instead.
+      - **news**: the **bare issue nucleus**—at most **two** short noun clusters (prefer ≤4 meaningful tokens total, one intentional space OK). ✅ "acquisition relief" ✅ "IPO retail deposit" ❌ "first-time buyer acquisition tax benefit summary checklist"
+      - **kin**: **same length cap**, but **topic + friction/pain** so Q&A/forums dredge desperation/warning threads—not miniature abstracts of your post. ✅ "subscription walk penalty" ✅ "margin liquidation blowup" ❌ "why IPO subscribers lose money full guide"
+      * No sentences, no explanatory tails; **short coverage beats argumentative precision**.
     template: |
       [1st-degree Trend Original (Use only as bait)]
       {{trends_data}}
@@ -216,14 +214,17 @@ tasks:
           {
             "trafficStrategy": { "lifecycle": "Evergreen", "targetAudience": "Concrete target in 1 line" },
             "targetKeyword": "The 2nd-degree keyword original form selected from metrics",
-            "newsSearchQuery": "No sentences or filler. 2–3 core noun tokens the news API can match (e.g., acquisition tax first-time buyer)",
+            "searchQueries": {
+              "news": "No thesis in query — ≤2-chunk nucleus (e.g., acquisition tax relief)",
+              "kin": "No thesis in query — issue+pain ≤2 chunks (e.g., subscription forfeiture)"
+            },
             "category": "Tech and IT | Finance | Life and Health | Entertainment",
             "angleType": "expose | guide | compare",
             "mainKeyword": "Long-tail keyword of the new main topic (noun form)",
             "searchIntent": "The true inner thoughts of someone searching this 2nd-degree topic",
-            "contentDepth": "Normal | Deep-Dive",
+            "contentDepth": "Snack | Normal | Deep-Dive (enum value only)",
             "conclusionType": "Q&A | Summary | CTA | Thought",
-            "coreFact": "[System Instruction] The newsSearchQuery result will be injected during the posting phase. Write a 1-line draft.",
+            "coreFact": "[System Instruction] Two-track facts inject during posting. Write a 1-line draft.",
             "painScore": 10,
             "viralTitles": {
               "curiosity": "Curiosity-inducing title (under 25 chars)",
@@ -231,7 +232,6 @@ tasks:
               "solution": "Solution-suggesting title"
             },
             "metaDescription": "Search result summary",
-            "slug": "English kebab-case for URL",
             "faq":[ {"q": "Question", "a": "Answer"} ],
             "subTopics":["Sub-topic 1 for the new 2nd-degree topic", "Sub-topic 2"],
             "coreEntities":["Proper nouns related to the new topic"],
@@ -290,10 +290,11 @@ tasks:
       - ✅ Best (micro-target long-tail): "11-month contract severance report"
       - Blacklist: eligibility, how to apply, guide, full summary, whether, precautions.
 
-      [News API newsSearchQuery (posting-phase enrichment)]
-      Same constraint as trend_analysis: posting calls NewsAPI (US) / Naver News (KR). Use tight headline-style tokens, not prose.
-      - ❌ Forbidden: long natural-language questions; filler like guide, explained, differences, overview, complete summary.
-      - ✅ Required: 2–3 noun tokens with spaces (e.g., "CMA rates comparison", "delivery subsidy clawback").
+      [Two-track fact queries — serendipity, not confirmation bias]
+      Same discipline as trend_analysis—**two ultra-short nucleus queries**. Never paste your concluding paragraph into the search boxes; APIs will echo marketing spam or brittle AND matches instead of gritty stories.
+      - **news**: **≤ two** noun clusters, nothing more. ✅ "IPO deposit spike" ✅ "DSR tightening" ❌ "apartment subscription mortgage rejection reasons regulators 2026"
+      - **kin**: **≤ two** clusters that still carry **pain/friction**. ✅ "allotment walk fee" ✅ "margin call ruined" ❌ "comprehensive guide to subscription loan denials". (KR may use Kin; US is news-only but still emit disciplined `kin`.)
+      * No sentences / how-to tails / calculators; broaden the net, shorten the tokens.
 
       [🔥 Emerging-Blog SEO Boost Rules — MANDATORY]
       <<analysis_seo_rules.pain_score>>
@@ -318,12 +319,12 @@ tasks:
       2. At least **1 of the 3 titles MUST directly hit the emotion/anxiety/need captured in searchIntent**.
       3. Treat these as direction, not a formula. Bracket-assembled titles are disallowed.
          - curiosity: lead with a hidden risk or counter-fact most readers have missed.
-         - dataDriven: anchor trust with real-life numbers from coreFact/enrichedFacts (amounts, rates, deadlines).
+         - dataDriven: anchor trust with real-life numbers from coreFact or posting-phase news facts (amounts, rates, deadlines).
          - solution: hit the reader's core pain point and imply a concrete way out.
          - self-check: "Would this read like a natural top community post title?" If not, rewrite.
       4. Never expose internal system metrics in any viralTitles field (competitionIndex, painScore,
          searchVolume, documentCount). For dataDriven titles, use real-world facts from coreFact or
-         enrichedFacts (e.g., benefit amount, discount rate, deadline), not internal scoring values.
+         posting-phase news facts (e.g., benefit amount, discount rate, deadline), not internal scoring values.
 
       [Pre-Output Self-Audit Checklist (Applies to every blogPost entry)]
       Self-review the twelve items below; if any fails, revise that field before emitting. **Do NOT include this checklist itself in the response JSON.**
@@ -345,7 +346,8 @@ tasks:
       {{metrics_data}}
       Note: `relatedQueries(reference)` in metrics_data are auxiliary hints for reader language/search context, not primary topic selectors. Use them selectively with painScore.
 
-      Based on the text above, respond with the following JSON structure (Create {{topic_count}} plans):
+      Based on the text above, respond with the following JSON structure (Create {{topic_count}} plans).
+      Metrics (`searchVolume`, `documentCount`, `competitionIndex`) are measured server-side—do **not** emit them.
       {
         "blogPosts": [
           {
@@ -353,27 +355,26 @@ tasks:
               "lifecycle": "Burst OR Evergreen (enum value only)",
               "targetAudience": "A one-line, concrete reader persona"
             },
-            "targetKeyword": "The Naver search term used as the basis for these metrics",
-            "newsSearchQuery": "No sentences/filler. 2–3 noun tokens for NewsAPI/Naver (e.g., CMA rates clawback)",
-            "searchVolume": 0,
-            "documentCount": 0,
-            "competitionIndex": 0.0,
+            "targetKeyword": "The metrics keyword original form you selected",
+            "searchQueries": {
+              "news": "No thesis in query — ≤2-chunk nucleus (e.g., CMA rate cut)",
+              "kin": "No thesis in query — issue+pain ≤2 chunks (e.g., allotment cancel fee)"
+            },
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum only)",
-            "angleType": "expose | guide | compare (lowercase single word)",            "mainKeyword": "No sentence form. Noun-heavy 3-4 term search query (e.g., delivery subsidy document rejection)",
+            "angleType": "expose | guide | compare (lowercase single word)",
+            "mainKeyword": "No sentence form. Noun-heavy 3-4 term search query (e.g., delivery subsidy document rejection)",
             "searchIntent": "The searcher's true intention or hidden anxiety",
-            "contentDepth": "Bite-sized | Normal | Deep-Dive (enum value only)",
+            "contentDepth": "Snack | Normal | Deep-Dive (enum value only)",
             "conclusionType": "Q&A | Summary | CTA | Thought (enum value only)",
             "shoppableKeyword": "Product-name string OR the data type null (no quotes). Use null for policy/finance/abstract topics.",
-            "coreFact": "[System Instruction] The newsSearchQuery result will be injected during the posting phase. Write a 1-line draft.",
+            "coreFact": "[System Instruction] Two-track facts inject during posting. Write a 1-line draft.",
             "painScore": 11,
-            "sourceUrls": ["Original news/post URLs related to this topic found in the input data", "URL2"],
             "viralTitles": {
               "curiosity": "Natural community-style curiosity title",
               "dataDriven": "Credible title with real-life numbers",
               "solution": "Pain-point + implied solution title"
             },
             "metaDescription": "Meta description",
-            "slug": "kebab-case-slug",
             "faq": [
               {"q": "Q1", "a": "A1"},
               {"q": "Q2", "a": "A2"}
@@ -381,7 +382,6 @@ tasks:
             "subTopics": ["Topic 1", "Topic 2", "Topic 3..."],
             "coreEntities": ["Entities"],
             "seoKeywords": ["SEO keyword 1", "keyword 2", "keyword 3"],
-            "lsiKeywords": ["lsi-1", "lsi-2", "lsi-3"],
             "imageSearchKeywords": ["keyword-1", "keyword-2"],
             "coreMessage": "One real piece of advice"
           }
@@ -429,7 +429,7 @@ tasks:
       - *pw_common_rules
       # ── [guide-specific rules] ───────────────────────────────────────────
       - "**Target Audience Fit (guide — step-by-step warmth):** Adjust vocabulary and the friendliness of step-by-step explanations to {{targetAudience}}'s level and daily context."
-      - "**Content Density Control:** Match the volume to {{contentDepth}} (Bite-sized / Normal / Deep-Dive). Cut unnecessary background knowledge aggressively."
+      - "**Content Density Control:** Match the volume to {{contentDepth}} (Snack / Normal / Deep-Dive). Cut unnecessary background knowledge aggressively."
       - "**Search Intent Alignment (Information Seeking):** Visually highlight the most common bottlenecks (e.g., error-prone settings, prerequisites) so they stand out the most."
       - "**Visual Structure (Procedure/Settings Table — guide):** Summarize complex procedures or configuration values into **Markdown Tables** to maximize readability. **[Table Generation Condition]** Use a table only when at least one column holds genuinely distinct, numerical, or unique data per row. If rows would just repeat similar adjectives or 'Yes/Available', use a bullet list instead. A table without concrete numbers is a low-quality AI footprint."
     template: |

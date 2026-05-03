@@ -73,11 +73,18 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     category: { type: "string", enum:["Tech and IT", "Finance", "Life and Health", "Entertainment"] },
                     targetKeyword: { type: "string" },
                     mainKeyword: { type: "string" },
-                    newsSearchQuery: { type: "string" },
-                    angleType: { type: "string", enum: ["expose", "guide", "compare"] },
+                    searchQueries: {
+                        type: "object",
+                        properties: {
+                            news: { type: "string" },
+                            kin: { type: "string" }
+                        },
+                        required:["news", "kin"]
+                    },
+                    angleType: { type: "string", enum:["expose", "guide", "compare"] },
                     searchIntent: { type: "string" },
                     contentDepth: { type: "string", enum:["Snack", "Bite-sized", "Normal", "Deep-Dive"] },
-                    conclusionType: { type: "string", enum: ["Q&A", "Summary", "CTA", "Thought"] },
+                    conclusionType: { type: "string", enum:["Q&A", "Summary", "CTA", "Thought"] },
                     shoppableKeyword: { type: "string", nullable: true },
                     coreFact: { type: "string" },
                     painScore: { type: "integer", minimum: 3, maximum: 15 },
@@ -91,7 +98,6 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                         required: ["curiosity", "dataDriven", "solution"]
                     },
                     metaDescription: { type: "string" },
-                    slug: { type: "string" },
                     faq: {
                         type: "array",
                         items: {
@@ -106,17 +112,13 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     subTopics: { type: "array", items: { type: "string" } },
                     coreEntities: { type: "array", items: { type: "string" } },
                     seoKeywords: { type: "array", items: { type: "string" } },
-                    lsiKeywords: { type: "array", items: { type: "string" } },
                     imageSearchKeywords: { type: "array", items: { type: "string" } },
-                    coreMessage: { type: "string" },
-                    searchVolume: { type: "integer" },
-                    documentCount: { type: "integer" },
-                    competitionIndex: { type: "number" }
+                    coreMessage: { type: "string" }
                 },
                 required:[
-                    "trafficStrategy", "category", "targetKeyword", "mainKeyword", "newsSearchQuery", "angleType", "searchIntent",
+                    "trafficStrategy", "category", "targetKeyword", "mainKeyword", "searchQueries", "angleType", "searchIntent",
                     "contentDepth", "conclusionType", "coreFact", "painScore", "viralTitles", "metaDescription",
-                    "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "imageSearchKeywords", "coreMessage"
+                    "faq", "subTopics", "coreEntities", "seoKeywords", "imageSearchKeywords", "coreMessage"
                 ]
             }
         }
@@ -177,17 +179,15 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
 
     for (const post of analysisResult.blogPosts) {
         const painScore = Number.isInteger(post.painScore) ? post.painScore : null;
-        const confidence = typeof post.painScore === 'string' ? post.painScore : null;
         const compIdx = typeof post.competitionIndex === 'number' ? post.competitionIndex : null;
         const searchVolume = typeof post.searchVolume === 'number' ? post.searchVolume : null;
         const documentCount = typeof post.documentCount === 'number' ? post.documentCount : null;
-        const sv = (typeof searchVolume === 'number') ? searchVolume : 0;
+        const sv = typeof searchVolume === 'number' ? searchVolume : 0;
         const seoViabilityScore = calcSeoViabilityScore(sv, compIdx, documentCount);
 
-        let priority = 'review'; // 기본값
+        let priority = 'review';
         let reason = '';
 
-        // [Gate 1] 검색량 0이면 유입 불가 키워드로 즉시 review
         if (sv === 0) {
             priority = 'review';
             reason = '⚠️ 검색량 0 — 실제 유입 불가 키워드';
@@ -196,7 +196,7 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
             priority = 'review';
             reason = '🚫 Burst — 신생 블로그 노출 지연으로 자동 제외';
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — Burst 하드필터로 review 강등`);
-        } else if (painScore === null && confidence === null) {
+        } else if (painScore === null) {
             priority = 'review';
             reason = 'painScore 누락';
         } else if (compIdx !== null && compIdx > COMPETITION_HARD_LIMIT) {
@@ -208,7 +208,7 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
                 reason = `⚠️ 경쟁 과열 선행 차단 + 생존점수 낮음 (competitionIndex ${compIdx}, seoViabilityScore ${seoViabilityScore})`;
             }
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — 경쟁률 과열로 ${priority} 분류`);
-        } else if (seoViabilityScore >= 8 && (confidence === 'High' || confidence === 'Medium' || confidence === null)) {
+        } else if (seoViabilityScore >= 8) {
             priority = 'primary';
             reason = `✅ SEO 생존 점수 우수 (seoViabilityScore ${seoViabilityScore})`;
         } else if (seoViabilityScore >= 5) {
@@ -228,7 +228,6 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
             painScore,
             modelPainScore: painScore,
             seoViabilityScore,
-            
             competitionIndex: compIdx,
             searchVolume,
             documentCount
@@ -2081,11 +2080,13 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
         logger.warn(`[Post Gen] Invalid angleType "${postPlan.angleType}" → fallback to "${angle}"`);
     }
     const promptKey = `post_writing_${angle}`;
+    const rawContentDepth = postPlan.contentDepth || 'Normal';
+    const normalizedContentDepth = rawContentDepth === 'Bite-sized' ? 'Snack' : rawContentDepth;
 
     const prompt = promptManager.getPrompt(promptKey, lang, {
         mainKeyword: postPlan.mainKeyword,
         searchIntent: postPlan.searchIntent,
-        contentDepth: postPlan.contentDepth || 'Normal',
+        contentDepth: normalizedContentDepth,
         conclusionType: postPlan.conclusionType || 'Q&A',
         coreFact: postPlan.coreFact || '[팩트 없음 — 수치·통계 창작 절대 금지. 기획안에 제공된 키워드와 맥락만 활용할 것]',
         coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
@@ -2102,10 +2103,13 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
         source_urls: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.sourceUrls) && postPlan.enrichedFacts.sourceUrls.length > 0)
             ? postPlan.enrichedFacts.sourceUrls.join('\n')
             : (Array.isArray(postPlan.sourceUrls) ? postPlan.sourceUrls.join('\n') : ''),
-        enrichedFacts: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.facts) && postPlan.enrichedFacts.facts.length > 0)
-            ? postPlan.enrichedFacts.facts.map((f, i) => `${i + 1}. ${f}`).join('\n')
-            : '',
-        outputFormat: FORMAT_MAP[`${angle}-${postPlan.contentDepth}`] || '',
+        newsFacts: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.news) && postPlan.enrichedFacts.news.length > 0)
+            ? postPlan.enrichedFacts.news.map((f, i) => `${i + 1}. ${f}`).join('\n')
+            : '[수집된 오피셜 뉴스 없음]',
+        kinPainPoints: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.kin) && postPlan.enrichedFacts.kin.length > 0)
+            ? postPlan.enrichedFacts.kin.map((f, i) => `${i + 1}. ${f}`).join('\n')
+            : '[수집된 커뮤니티 실제 사례 없음]',
+        outputFormat: FORMAT_MAP[`${angle}-${normalizedContentDepth}`] || '',
         context_url_1: "IMAGE_PLACEHOLDER_1",
         context_url_2: "IMAGE_PLACEHOLDER_2",
         context_url_3: "IMAGE_PLACEHOLDER_3"
@@ -2324,6 +2328,49 @@ app.post('/api/analyze', async (req, res) => {
   res.status(500).json({ error: 'AI 분석 실패', details: lastError?.message });
 });
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function searchNaverKin(query) {
+    if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) return [];
+    logger.api(`[Enrich] Naver Kin(지식인) 검색 요청: "${query}"`);
+    try {
+        const res = await axios.get('https://openapi.naver.com/v1/search/kin.json', {
+            params: { query, display: 3, sort: 'sim' },
+            headers: {
+                'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+                'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
+            }
+        });
+        return (res.data.items || []).map((item) => ({
+            title: item.title.replace(/<[^>]+>/g, ''),
+            summary: item.description.replace(/<[^>]+>/g, ''),
+            url: item.link
+        }));
+    } catch (e) {
+        if (e.response?.status === 429) {
+            logger.warn('[Enrich] 네이버 지식인 429 Rate Limit. 3초 대기 후 재시도...');
+            await sleep(3000);
+            try {
+                const retry = await axios.get('https://openapi.naver.com/v1/search/kin.json', {
+                    params: { query, display: 3, sort: 'sim' },
+                    headers: {
+                        'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+                        'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
+                    }
+                });
+                return (retry.data.items || []).map((item) => ({
+                    title: item.title.replace(/<[^>]+>/g, ''),
+                    summary: item.description.replace(/<[^>]+>/g, ''),
+                    url: item.link
+                }));
+            } catch (retryErr) {
+                return [];
+            }
+        }
+        return [];
+    }
+}
+
 async function searchNaverNews(query) {
     if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
         logger.warn('[Enrich] NAVER API 키 누락. 팩트 보강 검색 생략.');
@@ -2418,63 +2465,45 @@ async function searchNewsAPI(query) {
 
 async function enrichPostPlan(postPlan, region = 'KR') {
     try {
-        const searchBase = postPlan.newsSearchQuery || postPlan.targetKeyword || postPlan.mainKeyword;
-        const entities = (postPlan.coreEntities || []).slice(0, 2).join(' ');
-        const query = `${searchBase} ${entities}`.trim().slice(0, 50);
-        
-        let results = [];
-        
-        if (region === 'US') {
-            results = await searchNewsAPI(query);
-        } else {
-            results = await searchNaverNews(query);
-        }
+        const newsQuery =
+            postPlan.searchQueries?.news ||
+            postPlan.newsSearchQuery ||
+            postPlan.targetKeyword ||
+            postPlan.mainKeyword;
+        const kinQuery = postPlan.searchQueries?.kin || postPlan.mainKeyword;
 
-        // 너무 오래된 기사(1년 이상) 필터링
+        let newsResults = [];
+        let kinResults = [];
         const oneYearAgo = new Date();
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-        results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
 
-        // 1차(정밀 쿼리+엔티티) 결과 없음 → 긴 newsSearchQuery 재사용 대신 짧은 mainKeyword로 폴백 (API AND 매칭 친화)
-        if (results.length === 0) {
-            const fallbackKw =
-                String(postPlan.mainKeyword || '').trim() ||
-                String(postPlan.targetKeyword || '').trim() ||
-                searchBase;
-            logger.info(`[Enrich] 정밀 쿼리 결과 없음(또는 너무 오래됨). 안전한 단일 키워드(mainKeyword 우선)로 폴백 검색: ${fallbackKw}`);
-            if (region === 'US') {
-                results = await searchNewsAPI(fallbackKw);
-            } else {
-                results = await searchNaverNews(fallbackKw);
-                results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
+        if (region === 'US') {
+            newsResults = await searchNewsAPI(newsQuery);
+            if (newsResults.length === 0) newsResults = await searchNewsAPI(postPlan.mainKeyword);
+            newsResults = newsResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+        } else {
+            newsResults = await searchNaverNews(newsQuery);
+            if (newsResults.length === 0) newsResults = await searchNaverNews(postPlan.mainKeyword);
+            newsResults = newsResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
 
-                if (results.length === 0) {
-                    logger.info(`[Enrich] 네이버 폴백 실패. 최후의 수단 NewsAPI 시도: ${fallbackKw}`);
-                    results = await searchNewsAPI(fallbackKw);
-                }
-            }
-            results = results.filter(r => new Date(r.pubDate) >= oneYearAgo);
-        }
-        
-        // [B] category별 추가 소스 연동 로직 (한국 한정)
-        const cat = (postPlan.category || '').toLowerCase();
-        if (region === 'KR') {
+            const searchBase = String(newsQuery || '').trim();
+            const cat = (postPlan.category || '').toLowerCase();
             if (cat.includes('finance')) {
                 try {
                     const fssData = await getFssAlerts();
-                    // 팩트 연관성 체크를 위해 키워드 포함 여부 확인 (느슨한 매칭)
-                    const matched = fssData.filter(item => 
-                        item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
+                    const matched = fssData.filter(
+                        (item) => item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
                     );
                     if (matched.length > 0) {
                         logger.info(`[Enrich] FSS 소비자경보 관련 팩트 발견 — 추가됨`);
-                        // 배열 앞부분(우선순위)에 삽입
-                        results.unshift(...matched.map(r => ({
-                            title: `[금융감독원 소비자경보] ${r.keyword}`,
-                            summary: '금융감독원 공식 발표자료 (신뢰도 높음)',
-                            url: r.url,
-                            pubDate: r.pubDate
-                        })));
+                        newsResults.unshift(
+                            ...matched.map((r) => ({
+                                title: `[금융감독원 소비자경보] ${r.keyword}`,
+                                summary: '금융감독원 공식 발표자료 (신뢰도 높음)',
+                                url: r.url,
+                                pubDate: r.pubDate
+                            }))
+                        );
                     }
                 } catch (e) {
                     logger.warn(`[Enrich] FSS 연동 실패: ${e.message}`);
@@ -2482,40 +2511,60 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             } else if (cat.includes('life') || cat.includes('health') || cat.includes('policy')) {
                 try {
                     const policyData = await getPolicyBriefing();
-                    const matched = policyData.filter(item => 
-                        item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
+                    const matched = policyData.filter(
+                        (item) => item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
                     );
                     if (matched.length > 0) {
                         logger.info(`[Enrich] 정책브리핑 관련 팩트 발견 — 추가됨`);
-                        results.unshift(...matched.map(r => ({
-                            title: `[정책브리핑] ${r.keyword}`,
-                            summary: '대한민국 정책브리핑 공식 보도자료 (신뢰도 높음)',
-                            url: r.url,
-                            pubDate: r.pubDate
-                        })));
+                        newsResults.unshift(
+                            ...matched.map((r) => ({
+                                title: `[정책브리핑] ${r.keyword}`,
+                                summary: '대한민국 정책브리핑 공식 보도자료 (신뢰도 높음)',
+                                url: r.url,
+                                pubDate: r.pubDate
+                            }))
+                        );
                     }
                 } catch (e) {
                     logger.warn(`[Enrich] 정책브리핑 연동 실패: ${e.message}`);
                 }
             }
+
+            await sleep(300);
+            kinResults = await searchNaverKin(kinQuery);
+            if (kinResults.length === 0) kinResults = await searchNaverKin(postPlan.mainKeyword);
         }
 
-        if (results.length === 0) {
-            logger.warn(`[Enrich] 검색/카테고리 결과 없음 — keyword: ${postPlan.mainKeyword}`);
-            return postPlan; // 원본 기획안 그대로 반환
+        let newsLimit = 2;
+        let kinLimit = 1;
+
+        if (kinResults.length === 0) {
+            newsLimit = 3;
+            kinLimit = 0;
+        } else if (newsResults.length < 2) {
+            kinLimit = 3 - newsResults.length;
         }
 
-        // 상위 3개 결과 요약 추출 (카테고리 소스 우선)
-        const facts = results.slice(0, 3).map(r => `[${new Date(r.pubDate).toLocaleDateString()}] ${r.title} - ${r.summary}`);
-        const urls = results.slice(0, 3).filter(r => r.url).map(r => `- [${r.title}](${r.url})`);
+        if (newsResults.length === 0 && kinResults.length === 0) {
+            logger.warn(`[Enrich] 검색 결과 없음 — keyword: ${postPlan.mainKeyword}`);
+            return postPlan;
+        }
 
-        logger.success(`[Enrich] 팩트 보강 완료 (${facts.length}개 항목) — keyword: ${postPlan.mainKeyword}`);
+        const newsFacts = newsResults.slice(0, newsLimit).map((r) => `[뉴스 팩트] ${r.title} - ${r.summary}`);
+        const kinPainPoints = kinResults.slice(0, kinLimit).map((r) => `[실제 고민/사례] ${r.title} - ${r.summary}`);
+
+        const officialUrls = newsResults.slice(0, 5).filter((r) => r.url).map((r) => `- [${r.title}](${r.url})`);
+
+        logger.success(
+            `[Enrich] 팩트 믹스 완료 (뉴스 ${newsFacts.length}건, 지식인 ${kinPainPoints.length}건) — ${postPlan.mainKeyword}`
+        );
 
         return {
             ...postPlan,
             enrichedFacts: {
-                facts: facts,
-                sourceUrls: urls,
+                news: newsFacts,
+                kin: kinPainPoints,
+                sourceUrls: officialUrls,
                 fetchedAt: new Date().toISOString()
             }
         };
@@ -2718,11 +2767,8 @@ app.post('/api/generate-post', async (req, res) => {
 
   const currentDate = new Date().toISOString().split('T')[0];
 
-  // [v2.4] 슬러그 결정: AI가 생성한 slug → imageSearchKeywords[0] → mainKeyword(영문화 fallback)
-  const slugSource = postPlan.slug
-      || (Array.isArray(postPlan.imageSearchKeywords) && postPlan.imageSearchKeywords[0])
-      || postPlan.mainKeyword
-      || 'post';
+  // [v3.0] 슬러그: AI slug 제거 → imageSearchKeywords[0](영문) 우선 → mainKeyword 번역 fallback
+  const slugSource = (Array.isArray(postPlan.imageSearchKeywords) && postPlan.imageSearchKeywords[0]) || postPlan.mainKeyword;
   const fallbackSource = postPlan.mainKeyword || safeTitle;
   const finalSlug = makeUniqueSlug(slugSource, fallbackSource, `${postPlan.mainKeyword}|${selectedCategory}`);
 

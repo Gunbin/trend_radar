@@ -678,9 +678,9 @@ const PRIORITY_RANK = { primary: 1, secondary: 2, review: 3 };
 
 // [v2.7] priority 뱃지 메타 (라벨 + 아이콘)
 const PRIORITY_META = {
-    primary:   { label: 'PRIMARY',   icon: '■', title: '메인 기획 적합 (painScore≥9 & confidence=High)' },
-    secondary: { label: 'SECONDARY', icon: '▲', title: '보조 기획 허용 (painScore 6~8 또는 confidence=Medium)' },
-    review:    { label: 'REVIEW',    icon: '?', title: '재검토 권장 (painScore<6 또는 confidence=Low 또는 필드 누락)' }
+    primary:   { label: 'PRIMARY',   icon: '■', title: 'SEO 생존점수 우수(seoViability≥8) 등 — 서버 annotate 기준 메인 후보' },
+    secondary: { label: 'SECONDARY', icon: '▲', title: '생존점수 보통(5~7) 또는 경쟁 과열(competitionIndex>3) 시 보조 후보' },
+    review:    { label: 'REVIEW',    icon: '?', title: '검색량 0·Burst·painScore 누락/약함·과열+저점수 등 재검토' }
 };
 
 // HTML 이스케이프 (문자열 값 삽입 안전용)
@@ -759,13 +759,13 @@ function renderAIAnalysis(data) {
         <div class="priority-stats-bar">
             <div class="stats-left">
                 <span class="stats-label">QUALITY_DISTRIBUTION:</span>
-                <span class="stat-chip chip-primary" title="메인 기획 적합">
+                <span class="stat-chip chip-primary" title="${esc(PRIORITY_META.primary.title)}">
                     ${PRIORITY_META.primary.icon} PRIMARY ${counts.primary}
                 </span>
-                <span class="stat-chip chip-secondary" title="보조 기획 허용">
+                <span class="stat-chip chip-secondary" title="${esc(PRIORITY_META.secondary.title)}">
                     ${PRIORITY_META.secondary.icon} SECONDARY ${counts.secondary}
                 </span>
-                <span class="stat-chip chip-review" title="재검토 권장">
+                <span class="stat-chip chip-review" title="${esc(PRIORITY_META.review.title)}">
                     ${PRIORITY_META.review.icon} REVIEW ${counts.review}
                 </span>
                 ${counts.unknown ? `<span class="stat-chip chip-unknown">? LEGACY ${counts.unknown}</span>` : ''}
@@ -853,7 +853,8 @@ function renderAIAnalysis(data) {
                     <div class="meta-item"><span>CORE_ENTITIES:</span> ${(Array.isArray(post.coreEntities) ? post.coreEntities : []).map(esc).join(', ')}</div>
                     <div class="meta-item"><span>SEO_KEYWORDS:</span> ${(post.seoKeywords || []).map(esc).join(', ')}</div>
                     ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).map(esc).join(', ')}</div>` : ''}
-                    <div class="meta-item"><span>NEWS_QUERY:</span> ${esc(post.newsSearchQuery || 'N/A')}</div>
+                    <div class="meta-item"><span>NEWS_QUERY:</span> ${esc(post.searchQueries?.news || post.newsSearchQuery || 'N/A')}</div>
+                    <div class="meta-item"${APP_CONFIG.region === 'US' ? ' title="US 포스팅은 뉴스만 보강됩니다. Kin 키워드는 기획 참고용입니다."' : ''}><span>KIN_QUERY:</span> ${esc(post.searchQueries?.kin || 'N/A')}</div>
                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${esc(post.coreMessage)}</div>
                     ${sourceUrlsHtml}
                 </div>

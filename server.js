@@ -76,10 +76,11 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     searchQueries: {
                         type: "object",
                         properties: {
-                            news: { type: "string" },
+                            news_main: { type: "string" },
+                            news_sub: { type: "string" },
                             kin: { type: "string" }
                         },
-                        required:["news", "kin"]
+                        required: ["news_main", "news_sub", "kin"]
                     },
                     angleType: { type: "string", enum:["expose", "guide", "compare"] },
                     searchIntent: { type: "string" },
@@ -112,6 +113,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                     subTopics: { type: "array", items: { type: "string" } },
                     coreEntities: { type: "array", items: { type: "string" } },
                     seoKeywords: { type: "array", items: { type: "string" } },
+                    lsiKeywords: { type: "array", items: { type: "string" } },
                     imageSearchKeywords: { type: "array", items: { type: "string" } },
                     coreMessage: { type: "string" }
                 },
@@ -190,12 +192,11 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
 
         if (sv === 0) {
             priority = 'review';
-            reason = '⚠️ 검색량 0 — 실제 유입 불가 키워드';
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — searchVolume=0 review 강등`);
+            reason = '⚠️ 검색량 0 — 가짜 0(Fake Zero)일 수 있으나 검토 요망';
+            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — searchVolume=0`);
         } else if (burstHardFilterEnabled && post.trafficStrategy?.lifecycle === 'Burst') {
             priority = 'review';
             reason = '🚫 Burst — 신생 블로그 노출 지연으로 자동 제외';
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — Burst 하드필터로 review 강등`);
         } else if (painScore === null) {
             priority = 'review';
             reason = 'painScore 누락';
@@ -205,9 +206,8 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
                 reason = `⚠️ 경쟁 과열 선행 차단 (competitionIndex ${compIdx})`;
             } else {
                 priority = 'review';
-                reason = `⚠️ 경쟁 과열 선행 차단 + 생존점수 낮음 (competitionIndex ${compIdx}, seoViabilityScore ${seoViabilityScore})`;
+                reason = `⚠️ 경쟁 과열 선행 차단 + 생존점수 낮음 (competitionIndex ${compIdx})`;
             }
-            logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — 경쟁률 과열로 ${priority} 분류`);
         } else if (seoViabilityScore >= 8) {
             priority = 'primary';
             reason = `✅ SEO 생존 점수 우수 (seoViabilityScore ${seoViabilityScore})`;
@@ -1958,6 +1958,28 @@ function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
     return analysisJson;
 }
 
+// [v3.0] 레거시 `searchQueries.news` → `news_main` / 빈 `news_sub` 보정 (스키마·보강 로직 정합)
+function normalizeSearchQueriesV30(analysisJson) {
+    if (!analysisJson || !Array.isArray(analysisJson.blogPosts)) return analysisJson;
+    for (const post of analysisJson.blogPosts) {
+        if (!post || typeof post !== 'object') continue;
+        if (!post.searchQueries || typeof post.searchQueries !== 'object') {
+            post.searchQueries = {};
+        }
+        const sq = post.searchQueries;
+        const legacyNews = typeof sq.news === 'string' ? sq.news.trim() : '';
+        const main = typeof sq.news_main === 'string' ? sq.news_main.trim() : '';
+        const sub = typeof sq.news_sub === 'string' ? sq.news_sub.trim() : '';
+        const kin = typeof sq.kin === 'string' ? sq.kin.trim() : '';
+        post.searchQueries = {
+            news_main: main || legacyNews || (post.mainKeyword || post.targetKeyword || '').trim(),
+            news_sub: sub || (post.targetKeyword || post.mainKeyword || main || legacyNews || '').trim(),
+            kin: kin || (post.mainKeyword || main || legacyNews || '').trim()
+        };
+    }
+    return analysisJson;
+}
+
 async function getGoogleSuggestions(keyword, lang = 'ko', country = 'KR') {
   try {
     const res = await axios.get('http://suggestqueries.google.com/complete/search', {
@@ -2103,9 +2125,21 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
         source_urls: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.sourceUrls) && postPlan.enrichedFacts.sourceUrls.length > 0)
             ? postPlan.enrichedFacts.sourceUrls.join('\n')
             : (Array.isArray(postPlan.sourceUrls) ? postPlan.sourceUrls.join('\n') : ''),
-        newsFacts: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.news) && postPlan.enrichedFacts.news.length > 0)
-            ? postPlan.enrichedFacts.news.map((f, i) => `${i + 1}. ${f}`).join('\n')
-            : '[수집된 오피셜 뉴스 없음]',
+        newsMain: (() => {
+            const ef = postPlan.enrichedFacts || {};
+            const arr =
+                Array.isArray(ef.newsMain) && ef.newsMain.length
+                    ? ef.newsMain
+                    : Array.isArray(ef.news) && ef.news.length
+                      ? ef.news
+                      : [];
+            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : '[메인 뉴스 팩트 없음]';
+        })(),
+        newsSub: (() => {
+            const ef = postPlan.enrichedFacts || {};
+            const arr = Array.isArray(ef.newsSub) && ef.newsSub.length ? ef.newsSub : [];
+            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : '[보조 뉴스 팩트 없음]';
+        })(),
         kinPainPoints: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.kin) && postPlan.enrichedFacts.kin.length > 0)
             ? postPlan.enrichedFacts.kin.map((f, i) => `${i + 1}. ${f}`).join('\n')
             : '[수집된 커뮤니티 실제 사례 없음]',
@@ -2298,7 +2332,7 @@ app.post('/api/analyze', async (req, res) => {
         success = true;
         const parsed = JSON.parse(text);
         // [v3.0] 실측 metrics 덮어쓰기 → 그 다음 priority 태깅
-        const patched = applyMeasuredMetricsToAnalysis(parsed, measuredMetrics);
+        const patched = normalizeSearchQueriesV30(applyMeasuredMetricsToAnalysis(parsed, measuredMetrics));
         if (Array.isArray(patched.blogPosts)) {
             patched.blogPosts = diversifyAngles(patched.blogPosts);
             patched.blogPosts = diversifyContentDepth(patched.blogPosts);
@@ -2465,28 +2499,43 @@ async function searchNewsAPI(query) {
 
 async function enrichPostPlan(postPlan, region = 'KR') {
     try {
-        const newsQuery =
-            postPlan.searchQueries?.news ||
+        normalizeSearchQueriesV30({ blogPosts: [postPlan] });
+        const sq = postPlan.searchQueries && typeof postPlan.searchQueries === 'object' ? postPlan.searchQueries : {};
+        const legacyNews = typeof sq.news === 'string' ? sq.news.trim() : '';
+        const queryMain =
+            (typeof sq.news_main === 'string' && sq.news_main.trim()) ||
+            legacyNews ||
             postPlan.newsSearchQuery ||
             postPlan.targetKeyword ||
             postPlan.mainKeyword;
-        const kinQuery = postPlan.searchQueries?.kin || postPlan.mainKeyword;
+        const querySub =
+            (typeof sq.news_sub === 'string' && sq.news_sub.trim()) ||
+            postPlan.targetKeyword ||
+            postPlan.mainKeyword;
+        const queryKin = (typeof sq.kin === 'string' && sq.kin.trim()) || postPlan.mainKeyword;
 
-        let newsResults = [];
+        let newsMainResults = [];
+        let newsSubResults = [];
         let kinResults = [];
         const oneYearAgo = new Date();
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
         if (region === 'US') {
-            newsResults = await searchNewsAPI(newsQuery);
-            if (newsResults.length === 0) newsResults = await searchNewsAPI(postPlan.mainKeyword);
-            newsResults = newsResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+            newsMainResults = await searchNewsAPI(queryMain);
+            if (newsMainResults.length === 0) newsMainResults = await searchNewsAPI(postPlan.mainKeyword);
+            await sleep(500);
+            newsSubResults = await searchNewsAPI(querySub);
+            if (newsSubResults.length === 0 && querySub !== postPlan.mainKeyword) {
+                newsSubResults = await searchNewsAPI(postPlan.mainKeyword);
+            }
+            newsMainResults = newsMainResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+            newsSubResults = newsSubResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
         } else {
-            newsResults = await searchNaverNews(newsQuery);
-            if (newsResults.length === 0) newsResults = await searchNaverNews(postPlan.mainKeyword);
-            newsResults = newsResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+            newsMainResults = await searchNaverNews(queryMain);
+            if (newsMainResults.length === 0) newsMainResults = await searchNaverNews(postPlan.mainKeyword);
+            newsMainResults = newsMainResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
 
-            const searchBase = String(newsQuery || '').trim();
+            const searchBase = String(queryMain || '').trim();
             const cat = (postPlan.category || '').toLowerCase();
             if (cat.includes('finance')) {
                 try {
@@ -2495,8 +2544,8 @@ async function enrichPostPlan(postPlan, region = 'KR') {
                         (item) => item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
                     );
                     if (matched.length > 0) {
-                        logger.info(`[Enrich] FSS 소비자경보 관련 팩트 발견 — 추가됨`);
-                        newsResults.unshift(
+                        logger.info(`[Enrich] FSS 소비자경보 관련 팩트 발견 — 메인 트랙에 추가됨`);
+                        newsMainResults.unshift(
                             ...matched.map((r) => ({
                                 title: `[금융감독원 소비자경보] ${r.keyword}`,
                                 summary: '금융감독원 공식 발표자료 (신뢰도 높음)',
@@ -2515,8 +2564,8 @@ async function enrichPostPlan(postPlan, region = 'KR') {
                         (item) => item.keyword.includes(searchBase) || searchBase.includes(item.keyword)
                     );
                     if (matched.length > 0) {
-                        logger.info(`[Enrich] 정책브리핑 관련 팩트 발견 — 추가됨`);
-                        newsResults.unshift(
+                        logger.info(`[Enrich] 정책브리핑 관련 팩트 발견 — 메인 트랙에 추가됨`);
+                        newsMainResults.unshift(
                             ...matched.map((r) => ({
                                 title: `[정책브리핑] ${r.keyword}`,
                                 summary: '대한민국 정책브리핑 공식 보도자료 (신뢰도 높음)',
@@ -2530,40 +2579,44 @@ async function enrichPostPlan(postPlan, region = 'KR') {
                 }
             }
 
-            await sleep(300);
-            kinResults = await searchNaverKin(kinQuery);
+            await sleep(500);
+            newsSubResults = await searchNaverNews(querySub);
+            if (newsSubResults.length === 0) newsSubResults = await searchNaverNews(postPlan.targetKeyword || postPlan.mainKeyword);
+            newsSubResults = newsSubResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+
+            await sleep(500);
+            kinResults = await searchNaverKin(queryKin);
             if (kinResults.length === 0) kinResults = await searchNaverKin(postPlan.mainKeyword);
         }
 
-        let newsLimit = 2;
-        let kinLimit = 1;
-
-        if (kinResults.length === 0) {
-            newsLimit = 3;
-            kinLimit = 0;
-        } else if (newsResults.length < 2) {
-            kinLimit = 3 - newsResults.length;
-        }
-
-        if (newsResults.length === 0 && kinResults.length === 0) {
+        if (region === 'US') {
+            if (newsMainResults.length === 0 && newsSubResults.length === 0) {
+                logger.warn(`[Enrich] US 뉴스 결과 없음 — keyword: ${postPlan.mainKeyword}`);
+                return postPlan;
+            }
+        } else if (newsMainResults.length === 0 && newsSubResults.length === 0 && kinResults.length === 0) {
             logger.warn(`[Enrich] 검색 결과 없음 — keyword: ${postPlan.mainKeyword}`);
             return postPlan;
         }
 
-        const newsFacts = newsResults.slice(0, newsLimit).map((r) => `[뉴스 팩트] ${r.title} - ${r.summary}`);
-        const kinPainPoints = kinResults.slice(0, kinLimit).map((r) => `[실제 고민/사례] ${r.title} - ${r.summary}`);
+        const factMain = newsMainResults.slice(0, 2).map((r) => `[메인 뉴스] ${r.title} - ${r.summary}`);
+        const factSub = newsSubResults.slice(0, 2).map((r) => `[보조 뉴스] ${r.title} - ${r.summary}`);
+        const factKin = kinResults.slice(0, 2).map((r) => `[실제 고민/사례] ${r.title} - ${r.summary}`);
 
-        const officialUrls = newsResults.slice(0, 5).filter((r) => r.url).map((r) => `- [${r.title}](${r.url})`);
+        const officialUrls = [...newsMainResults.slice(0, 2), ...newsSubResults.slice(0, 2)]
+            .filter((r) => r.url)
+            .map((r) => `- [${r.title}](${r.url})`);
 
         logger.success(
-            `[Enrich] 팩트 믹스 완료 (뉴스 ${newsFacts.length}건, 지식인 ${kinPainPoints.length}건) — ${postPlan.mainKeyword}`
+            `[Enrich] 2:2:2 밸런스 보강 완료 (메인 ${factMain.length}건, 보조 ${factSub.length}건, 지식인 ${factKin.length}건) — ${postPlan.mainKeyword}`
         );
 
         return {
             ...postPlan,
             enrichedFacts: {
-                news: newsFacts,
-                kin: kinPainPoints,
+                newsMain: factMain,
+                newsSub: factSub,
+                kin: factKin,
                 sourceUrls: officialUrls,
                 fetchedAt: new Date().toISOString()
             }

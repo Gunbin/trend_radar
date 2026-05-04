@@ -1,4 +1,4 @@
-# TrendRadar v2.7: AI Viral Marketer & SEO/GEO/AIO Ultimate Prompt (EN) — 3-Tier + visual slots by contentDepth
+# TrendRadar v3.0: AI Viral Marketer & SEO/GEO/AIO Ultimate Prompt (EN) — 3-Tier + 3-Track facts + contentDepth
 #
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  Structure Guide                                                          ║
@@ -31,10 +31,10 @@ _shared:
     
     - "**[T2] Structural flexibility (Anti-Template):** Treat `{{outputFormat}}` as directional guidance, not a fixed template. Do not follow the sequence mechanically; merge/split/reorder sections when the topic demands it, and add new H2 labels if they improve completion clarity. Single success criterion: can the reader actually complete the task using this post alone?"
     - "**[T2] Source concealment vs information exposure (split protocol):**\n        [Conceal — abstract these]: raw community or tabloid-style source labels from the input (e.g. reddit, instiz, buzzfeed tier where gossip), and throwaway reference-only dates. Paraphrase as 'a recent online thread' etc. Pasting bracket placeholders ([ ]) or system tokens into the body is fatal.\n        [Expose — state plainly]: official agencies (FTC, SEC, IRS, CDC…), real deadlines, percentages, dollars, and externally verified official facts. Put confirmed URLs in `### [References]` when you have them.\n        (CRITICAL: never print '[Google Search]' or similar system traces.)"
-    - "**[T2] Official vs community facts:** Use `{{newsFacts}}` for official/news-backed claims; use `{{kinPainPoints}}` only for reader pain, edge cases, and lived-friction narrative. **Never** put Kin/Q&A source URLs in `### [References]` (news URLs only)."
-    - "**[T2] Mandatory deep expansion of injected facts — no lazy one-line summaries:** You must **not** compress `{{newsFacts}}` or `{{kinPainPoints}}` into a throwaway line like \"recent articles say…\" or \"people online worry…\". \n 1) **News facts:** unpack **why** the phenomenon/policy matters and tie it to supplied figures/context — aim for **at least 3–4 short paragraphs** per major news fact cluster before moving on (still obey [T1]: **never invent** numbers absent from inputs). \n 2) **Kin / forum pain excerpts:** flesh out the asker's worst-case crisis (failure, denial, clawback spiral, catastrophic loss framing) **without inventing fabricated biographies**, then supply expert-style troubleshooting—not vibe-only moralizing. \n 3) When integrating multiple injected facts, give each substantive fact cluster its **own `###` H3** so visible length and information density spike (this directly fights LLM laziness)."
+    - "**[T2] Official vs community facts:** Use `{{newsMain}}` and `{{newsSub}}` for official/news-backed policy, figures, and background; use `{{kinPainPoints}}` only for reader pain, edge cases, and lived-friction narrative."
+    - "**[T2] Mandatory deep expansion of injected facts — no lazy one-line summaries:** Do **not** compress injected facts into a throwaway \"recent articles say…\" line. \n 1) **News (main + sub):** unpack **why** the phenomenon/policy matters — aim for **at least 3–4 short paragraphs** per major cluster (still obey [T1]: **never invent** numbers absent from inputs). \n 2) **Kin / forum pain:** flesh out the asker's crisis **without fabricated biographies**, then troubleshooting—not vibe-only moralizing. \n 3) Give each substantive fact cluster its **own `###` H3** so density spikes."
     - "**[T2] Technical SEO — FAQ + schema:** Add FAQ before the end per `{{contentDepth}}`: **Snack = 1 core FAQ only (no JSON-LD)**, **Normal = 2–3 FAQs + FAQPage JSON-LD**, **Deep-Dive = 4–5 FAQs + FAQPage JSON-LD**. **Do not** use a dull `### FAQ` or generic 'Frequently Asked Questions' as the only heading — use a topic-tight, engaging H3. Phrase questions with ``-style colloquial language. Important: FAQPage JSON-LD is automatically injected into `<head>` from the front matter `faq:` array, so never print FAQPage JSON-LD in the body (including ```json code blocks)."
-    - "**[T2] References (SEO anchor):** If `{{source_urls}}` exists, end the post with `### [References]` and a bullet list of `- [Title](URL)`. If no URLs, omit the whole section."
+    - "**[T2] References — editor-level filtering:** Even if `{{source_urls}}` lists URLs, **do not** paste irrelevant, spammy, or off-topic links. Keep only news-backed URLs that truly support your body. End with `### [References]` and `- [Title](URL)` bullets for those survivors only. **Never** put Kin/Q&A URLs in References. If nothing survives review, omit the whole section."
     # ══ TIER 3 — STYLE (apply after T1+T2) ══
     - "**[T3] Information density vs. volume balance:** Match `{{contentDepth}}`. Drop filler backstory, forced empathy, and fake scenarios. Ban hollow closers like 'it can be said that…'. Keep paragraphs short (2–3 sentences) but stack **4–5+** short paragraphs per H2 where needed. Never repeat a mechanical example in every H2. Deep-dive only in 1–2 key sections."
     - "**[T3] Strategic bolding with restraint:** Do not bold every paragraph mechanically. Use bold only at 3–6 high-signal points across the whole post. Prioritize 3 classes: (1) concrete numbers/deadlines (e.g., **up to $50 monthly refund**), (2) must-do actions (e.g., **check overlapping discount eligibility first**), (3) critical penalties (e.g., **benefit revoked after 3 violations**). Do not bold emotional filler, generic narration, or repeated heading language. Too much bold dilutes emphasis."
@@ -97,12 +97,11 @@ _shared:
 
   post_writing_template_blocks:
     trust_anchor: |
-      [Trust Anchors — must appear in the body]
-      ① Official facts (news): {{newsFacts}}
-         → Ground dates, agencies, and numeric claims here (no fabrication).
-      ② Community pain (Kin): {{kinPainPoints}}
-         → Use for reader friction, edge cases, and troubleshooting angles only.
-      ③ Planning fact: {{coreFact}}
+      [Trust anchors — use as the factual spine of the body]
+      ① Core news facts: {{newsMain}}
+      ② Secondary / extension news facts: {{newsSub}}
+      ③ Community pain (Kin excerpts): {{kinPainPoints}}
+      ④ Planning-line draft: {{coreFact}}
     plan_fields: |
       [Post Plan]
       - Category: {{category}}
@@ -136,12 +135,9 @@ _shared:
     pain_score: |
       ■ Pain Score (painScore, integer 3-15)
         Evaluate the reader's practical pain for this keyword intuitively.
-        Synthesize severity (how badly it breaks), urgency (how immediate), and impact (money/time/safety loss)
-        and output exactly one integer between 3 and 15.
-
-        Interpretation: 9+ = urgent/loss-prevention, 6-8 = compare/consideration, 5 or below = re-plan recommended
-        * Note: Do NOT artificially lower the score just because search volume reads 0 or is unmeasurable. If it's a 'Fake Zero' keyword with real human suffering, score it honestly high (up to 15 when justified).
-        Final `priority` may still be re-scored server-side from metrics—your job here is to reflect reader pain, not to pre-empt API zeros with a forced low painScore. Avoid groundless emotional inflation, but do not slash pain solely because volume is 0.
+        Combine severity, urgency, and impact (money/time/safety) into one integer 3–15.
+        Interpretation: 9+ = urgent/loss-prevention, 6–8 = compare/consideration, 5 or below = re-plan recommended
+        * Note: Do NOT artificially lower the score just because search volume reads 0 or is unmeasurable. On Fake Zero long-tails with real suffering, score up to 15 when justified.
 
 tasks:
   # ===================================================================== #
@@ -195,12 +191,13 @@ tasks:
       2. [Tier 2 — fake-zero long-tail]: If Tier 1 is empty, prefer high-Pain colloquial long-tails even when `searchVolume` reads 0—the API often undercounts real demand. (e.g., "PTO bridge vacation hacks")
       3. [Tier 3 — red-ocean survival]: Only when every viable candidate is 🔴 Red Ocean; choose as last resort and force extreme Micro-Targeting to carve a niche.
 
-      [Two-track fact queries — serendipity, not confirmation bias]
-      Design **two broad-net queries** so posting enrichment surfaces **unexpected**, useful facts—**not** self-fulfilling hits that echo your headline.
-      ⚠️ Do **NOT** bake your predetermined article thesis into either string (confirmation bias): many news APIs behave like loose AND matchers; stuffing every noun from your takeaway returns brochures, fluff PR, or unrelated SEO pages that accidentally match all tokens. Cast a **short, wide hook** instead.
-      - **news**: the **bare issue nucleus**—at most **two** short noun clusters (prefer ≤4 meaningful tokens total, one intentional space OK). ✅ "acquisition relief" ✅ "IPO retail deposit" ❌ "first-time buyer acquisition tax benefit summary checklist"
-      - **kin**: **same length cap**, but **topic + friction/pain** so Q&A/forums dredge desperation/warning threads—not miniature abstracts of your post. ✅ "subscription walk penalty" ✅ "margin liquidation blowup" ❌ "why IPO subscribers lose money full guide"
-      * No sentences, no explanatory tails; **short coverage beats argumentative precision**.
+      [Three-track fact queries — serendipity, not confirmation bias]
+      Posting enrichment uses **three** short hooks: two news nuclei + one pain-shaped Kin string (schema keys: `news_main`, `news_sub`, `kin`).
+      ⚠️ Do **NOT** bake your concluding thesis into these strings (confirmation bias). Cast **short, wide** hooks.
+      - **news_main**: the **core issue nucleus**—≤2 short noun clusters. ✅ "acquisition relief" ✅ "IPO retail deposit" ❌ long sentence abstracts
+      - **news_sub**: a **related / extension** nucleus that can surface complementary angles—same length discipline.
+      - **kin**: **topic + friction/pain** for Q&A-style desperation threads. ✅ "subscription walk penalty" ✅ "margin liquidation blowup" ❌ miniature outlines of your article
+      * No sentences, no how-to tails; **short coverage beats argumentative precision**. (KR uses Kin in enrichment; US is news-only for fetch but still emit a disciplined `kin` string for schema consistency.)
     template: |
       [1st-degree Trend Original (Use only as bait)]
       {{trends_data}}
@@ -215,8 +212,9 @@ tasks:
             "trafficStrategy": { "lifecycle": "Evergreen", "targetAudience": "Concrete target in 1 line" },
             "targetKeyword": "The 2nd-degree keyword original form selected from metrics",
             "searchQueries": {
-              "news": "No thesis in query — ≤2-chunk nucleus (e.g., acquisition tax relief)",
-              "kin": "No thesis in query — issue+pain ≤2 chunks (e.g., subscription forfeiture)"
+              "news_main": "Main news API — ≤2-chunk nucleus (e.g., acquisition tax relief)",
+              "news_sub": "Secondary news API — complementary nucleus (e.g., first-time buyer relief)",
+              "kin": "Kin / pain hook — issue+pain ≤2 chunks (e.g., subscription forfeiture)"
             },
             "category": "Tech and IT | Finance | Life and Health | Entertainment",
             "angleType": "expose | guide | compare",
@@ -224,7 +222,7 @@ tasks:
             "searchIntent": "The true inner thoughts of someone searching this 2nd-degree topic",
             "contentDepth": "Snack | Normal | Deep-Dive (enum value only)",
             "conclusionType": "Q&A | Summary | CTA | Thought",
-            "coreFact": "[System Instruction] Two-track facts inject during posting. Write a 1-line draft.",
+            "coreFact": "[System Instruction] Three-track facts inject during posting. Write a 1-line draft.",
             "painScore": 10,
             "viralTitles": {
               "curiosity": "Curiosity-inducing title (under 25 chars)",
@@ -290,10 +288,10 @@ tasks:
       - ✅ Best (micro-target long-tail): "11-month contract severance report"
       - Blacklist: eligibility, how to apply, guide, full summary, whether, precautions.
 
-      [Two-track fact queries — serendipity, not confirmation bias]
-      Same discipline as trend_analysis—**two ultra-short nucleus queries**. Never paste your concluding paragraph into the search boxes; APIs will echo marketing spam or brittle AND matches instead of gritty stories.
-      - **news**: **≤ two** noun clusters, nothing more. ✅ "IPO deposit spike" ✅ "DSR tightening" ❌ "apartment subscription mortgage rejection reasons regulators 2026"
-      - **kin**: **≤ two** clusters that still carry **pain/friction**. ✅ "allotment walk fee" ✅ "margin call ruined" ❌ "comprehensive guide to subscription loan denials". (KR may use Kin; US is news-only but still emit disciplined `kin`.)
+      [Three-track fact queries — serendipity, not confirmation bias]
+      Same discipline as trend_analysis: **`news_main`**, **`news_sub`**, **`kin`** — all short nucleus hooks, no thesis stuffed into the query box.
+      - **news_main** / **news_sub**: **≤ two** noun clusters each. ✅ "IPO deposit spike" ✅ "DSR tightening" ❌ long argumentative queries
+      - **kin**: **pain/friction** in ≤ two clusters. ✅ "allotment walk fee" ✅ "margin call ruined" ❌ "comprehensive guide…". (US posting is news-only for fetch; still emit `kin` for schema consistency.)
       * No sentences / how-to tails / calculators; broaden the net, shorten the tokens.
 
       [🔥 Emerging-Blog SEO Boost Rules — MANDATORY]
@@ -357,7 +355,8 @@ tasks:
             },
             "targetKeyword": "The metrics keyword original form you selected",
             "searchQueries": {
-              "news": "No thesis in query — ≤2-chunk nucleus (e.g., CMA rate cut)",
+              "news_main": "No thesis in query — ≤2-chunk nucleus (e.g., CMA rate cut)",
+              "news_sub": "Complementary nucleus — ≤2 chunks (e.g., mortgage stress test)",
               "kin": "No thesis in query — issue+pain ≤2 chunks (e.g., allotment cancel fee)"
             },
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum only)",
@@ -367,7 +366,7 @@ tasks:
             "contentDepth": "Snack | Normal | Deep-Dive (enum value only)",
             "conclusionType": "Q&A | Summary | CTA | Thought (enum value only)",
             "shoppableKeyword": "Product-name string OR the data type null (no quotes). Use null for policy/finance/abstract topics.",
-            "coreFact": "[System Instruction] Two-track facts inject during posting. Write a 1-line draft.",
+            "coreFact": "[System Instruction] Three-track facts inject during posting. Write a 1-line draft.",
             "painScore": 11,
             "viralTitles": {
               "curiosity": "Natural community-style curiosity title",

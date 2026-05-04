@@ -853,8 +853,9 @@ function renderAIAnalysis(data) {
                     <div class="meta-item"><span>CORE_ENTITIES:</span> ${(Array.isArray(post.coreEntities) ? post.coreEntities : []).map(esc).join(', ')}</div>
                     <div class="meta-item"><span>SEO_KEYWORDS:</span> ${(post.seoKeywords || []).map(esc).join(', ')}</div>
                     ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).map(esc).join(', ')}</div>` : ''}
-                    <div class="meta-item"><span>NEWS_QUERY:</span> ${esc(post.searchQueries?.news || post.newsSearchQuery || 'N/A')}</div>
-                    <div class="meta-item"${APP_CONFIG.region === 'US' ? ' title="US 포스팅은 뉴스만 보강됩니다. Kin 키워드는 기획 참고용입니다."' : ''}><span>KIN_QUERY:</span> ${esc(post.searchQueries?.kin || 'N/A')}</div>
+                    <div class="meta-item"><span>NEWS_MAIN:</span> ${esc(post.searchQueries?.news_main || post.searchQueries?.news || post.newsSearchQuery || 'N/A')}</div>
+                    <div class="meta-item"><span>NEWS_SUB:</span> ${esc(post.searchQueries?.news_sub || 'N/A')}</div>
+                    <div class="meta-item"${APP_CONFIG.region === 'US' ? ' title="US 포스팅은 뉴스 API만으로 팩트를 보강합니다. Kin 키워드는 스키마·기획 참고용입니다."' : ''}><span>KIN_QUERY:</span> ${esc(post.searchQueries?.kin || 'N/A')}</div>
                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${esc(post.coreMessage)}</div>
                     ${sourceUrlsHtml}
                 </div>

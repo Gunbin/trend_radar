@@ -99,6 +99,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                         required: ["curiosity", "dataDriven", "solution"]
                     },
                     metaDescription: { type: "string" },
+                    slug: { type: "string" },
                     faq: {
                         type: "array",
                         items: {
@@ -120,7 +121,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
                 required:[
                     "trafficStrategy", "category", "targetKeyword", "mainKeyword", "searchQueries", "angleType", "searchIntent",
                     "contentDepth", "conclusionType", "coreFact", "painScore", "viralTitles", "metaDescription",
-                    "faq", "subTopics", "coreEntities", "seoKeywords", "imageSearchKeywords", "coreMessage"
+                    "slug", "faq", "subTopics", "coreEntities", "seoKeywords", "imageSearchKeywords", "coreMessage"
                 ]
             }
         }
@@ -2103,7 +2104,18 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
     }
     const promptKey = `post_writing_${angle}`;
     const rawContentDepth = postPlan.contentDepth || 'Normal';
-    const normalizedContentDepth = rawContentDepth === 'Bite-sized' ? 'Snack' : rawContentDepth;
+    let normalizedContentDepth = rawContentDepth === 'Bite-sized' ? 'Snack' : rawContentDepth;
+
+    const efForDepth = postPlan.enrichedFacts || {};
+    const totalFacts =
+        (Array.isArray(efForDepth.newsMain) ? efForDepth.newsMain.length : 0) +
+        (Array.isArray(efForDepth.newsSub) ? efForDepth.newsSub.length : 0) +
+        (Array.isArray(efForDepth.kin) ? efForDepth.kin.length : 0);
+    if (totalFacts >= 5 && normalizedContentDepth === 'Snack') {
+        normalizedContentDepth = 'Normal';
+        postPlan.contentDepth = 'Normal';
+        logger.info(`[Post Gen] 팩트 ${totalFacts}건 확보 → ContentDepth 'Snack'에서 'Normal'로 자동 업그레이드`);
+    }
 
     const prompt = promptManager.getPrompt(promptKey, lang, {
         mainKeyword: postPlan.mainKeyword,
@@ -2405,6 +2417,96 @@ async function searchNaverKin(query) {
     }
 }
 
+// [v3.5] p태그 밀도 휴리스틱 크롤링
+//        1단계: 기존 셀렉터(빠른 경로)
+//        2단계: p태그 밀도 분석(부모 노드별 합산 → 최고 밀도 채택)
+//        3단계: 전체 p태그 폴백
+//        4단계: body 전체 폴백 (p태그 미사용 구형 사이트 대응)
+async function scrapeWebText(url, maxLength = 500) {
+    if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return null;
+
+    try {
+        const { body } = await gotScraping({
+            url,
+            headerGeneratorOptions: {
+                browsers: [{ name: 'chrome', minVersion: 110 }],
+                devices: ['desktop'],
+                locales: ['ko-KR']
+            },
+            timeout: { request: 3000 }
+        });
+        const $ = cheerio.load(body);
+
+        // 노이즈 제거 — 기존 대비 comment, share, sns, journalist, copyright 추가
+        $('script, style, noscript, iframe, nav, header, footer, aside, form, table, ul, li').remove();
+        $('.header, .footer, .menu, .nav, .sidebar, .banner, .ad, .weather, .stock, .related, .comment, .share, .sns, .journalist, .reporter, .copyright, .article-util').remove();
+
+        // [1단계] 기존 셀렉터 목록 — 주요 언론사 빠른 경로
+        // 채택 기준을 100 → 150으로 상향해 짧은 노이즈 블록 필터링 강화
+        const articleSelectors = [
+            'article',
+            '.article-body',
+            '.article_body',
+            '.news-content',
+            '.view_cont',
+            '.newsct_article',
+            '#articleBodyContents',
+            '.article-view-body',
+            '#news_body',
+            'main'
+        ];
+        for (const selector of articleSelectors) {
+            const found = $(selector).text().replace(/\s+/g, ' ').trim();
+            if (found.length > 150) {
+                return found.length > maxLength ? `${found.substring(0, maxLength)}...` : found;
+            }
+        }
+
+        // [2단계] p태그 밀도 분석 — 사이트 구조 무관 동작
+        // 각 부모 노드 기준으로 자식 p태그 텍스트 길이를 합산해 가장 밀도 높은 노드 선택
+        const parentScores = new Map();
+        $('p').each((_, el) => {
+            const text = $(el).text().trim();
+            if (text.length < 20) return; // 너무 짧은 p는 노이즈로 간주
+            const parent = $(el).parent().get(0);
+            if (!parent) return;
+            parentScores.set(parent, (parentScores.get(parent) || 0) + text.length);
+        });
+
+        if (parentScores.size > 0) {
+            const bestParent = [...parentScores.entries()]
+                .sort((a, b) => b[1] - a[1])[0][0];
+            const text = $(bestParent).find('p')
+                .map((_, el) => $(el).text().trim())
+                .get()
+                .filter(t => t.length > 20)
+                .join(' ');
+            if (text.length > 100) {
+                return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+            }
+        }
+
+        // [3단계] 전체 p태그 폴백
+        const allP = $('p').map((_, el) => $(el).text().trim())
+            .get()
+            .filter(t => t.length > 20)
+            .join(' ');
+        if (allP.length > 150) {
+            return allP.length > maxLength ? `${allP.substring(0, maxLength)}...` : allP;
+        }
+
+        // [4단계] body 전체 폴백 — p태그조차 안 쓰는 구형 사이트 최후 대응
+        const rawBody = $('body').text().replace(/\s+/g, ' ').trim();
+        if (rawBody.length > 150) {
+            return rawBody.length > maxLength ? `${rawBody.substring(0, maxLength)}...` : rawBody;
+        }
+
+        return null;
+    } catch (_e) {
+        return null;
+    }
+}
+
 async function searchNaverNews(query) {
     if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
         logger.warn('[Enrich] NAVER API 키 누락. 팩트 보강 검색 생략.');
@@ -2414,7 +2516,7 @@ async function searchNaverNews(query) {
     const startTime = Date.now();
     try {
         const res = await axios.get('https://openapi.naver.com/v1/search/news.json', {
-            params: { query, display: 5, sort: 'date' },
+            params: { query, display: 5, sort: 'sim' },
             headers: {
                 'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
                 'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
@@ -2436,7 +2538,7 @@ async function searchNaverNews(query) {
             try {
                 const retryStartTime = Date.now();
                 const retry = await axios.get('https://openapi.naver.com/v1/search/news.json', {
-                    params: { query, display: 5, sort: 'date' },
+                    params: { query, display: 5, sort: 'sim' },
                     headers: {
                         'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
                         'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET
@@ -2517,8 +2619,8 @@ async function enrichPostPlan(postPlan, region = 'KR') {
         let newsMainResults = [];
         let newsSubResults = [];
         let kinResults = [];
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        const threeYearsAgo = new Date();
+        threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
 
         if (region === 'US') {
             newsMainResults = await searchNewsAPI(queryMain);
@@ -2528,12 +2630,12 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             if (newsSubResults.length === 0 && querySub !== postPlan.mainKeyword) {
                 newsSubResults = await searchNewsAPI(postPlan.mainKeyword);
             }
-            newsMainResults = newsMainResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
-            newsSubResults = newsSubResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+            newsMainResults = newsMainResults.filter((r) => new Date(r.pubDate) >= threeYearsAgo);
+            newsSubResults = newsSubResults.filter((r) => new Date(r.pubDate) >= threeYearsAgo);
         } else {
             newsMainResults = await searchNaverNews(queryMain);
             if (newsMainResults.length === 0) newsMainResults = await searchNaverNews(postPlan.mainKeyword);
-            newsMainResults = newsMainResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+            newsMainResults = newsMainResults.filter((r) => new Date(r.pubDate) >= threeYearsAgo);
 
             const searchBase = String(queryMain || '').trim();
             const cat = (postPlan.category || '').toLowerCase();
@@ -2582,7 +2684,7 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             await sleep(500);
             newsSubResults = await searchNaverNews(querySub);
             if (newsSubResults.length === 0) newsSubResults = await searchNaverNews(postPlan.targetKeyword || postPlan.mainKeyword);
-            newsSubResults = newsSubResults.filter((r) => new Date(r.pubDate) >= oneYearAgo);
+            newsSubResults = newsSubResults.filter((r) => new Date(r.pubDate) >= threeYearsAgo);
 
             await sleep(500);
             kinResults = await searchNaverKin(queryKin);
@@ -2599,8 +2701,21 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             return postPlan;
         }
 
-        const factMain = newsMainResults.slice(0, 2).map((r) => `[메인 뉴스] ${r.title} - ${r.summary}`);
-        const factSub = newsSubResults.slice(0, 2).map((r) => `[보조 뉴스] ${r.title} - ${r.summary}`);
+        // [v3.2] 뉴스: URL 순차 크롤로 본문 일부 확보 / 지식인: JS·로그인 이슈로 API summary 유지
+        const factMain = [];
+        for (const r of newsMainResults.slice(0, 2)) {
+            const fullText = (r.url ? await scrapeWebText(r.url) : null) || r.summary;
+            factMain.push(`[메인 뉴스] ${r.title} - ${fullText}`);
+            await sleep(300);
+        }
+
+        const factSub = [];
+        for (const r of newsSubResults.slice(0, 2)) {
+            const fullText = (r.url ? await scrapeWebText(r.url) : null) || r.summary;
+            factSub.push(`[보조 뉴스] ${r.title} - ${fullText}`);
+            await sleep(300);
+        }
+
         const factKin = kinResults.slice(0, 2).map((r) => `[실제 고민/사례] ${r.title} - ${r.summary}`);
 
         const officialUrls = [...newsMainResults.slice(0, 2), ...newsSubResults.slice(0, 2)]
@@ -2608,7 +2723,7 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             .map((r) => `- [${r.title}](${r.url})`);
 
         logger.success(
-            `[Enrich] 2:2:2 밸런스 보강 완료 (메인 ${factMain.length}건, 보조 ${factSub.length}건, 지식인 ${factKin.length}건) — ${postPlan.mainKeyword}`
+            `[Enrich] v3.2 크롤링 보강 완료 (메인 ${factMain.length}건, 보조 ${factSub.length}건, 지식인 ${factKin.length}건) — ${postPlan.mainKeyword}`
         );
 
         return {
@@ -2728,13 +2843,14 @@ app.post('/api/generate-post', async (req, res) => {
   const usedImageUrls = new Set(); // 포스팅 단위 중복 이미지 방지용 Set
 
   // 2. 썸네일 생성 (title 기반)
-  const selectedTitle = postPlan.viralTitles ? 
-      (postPlan.viralTitles.dataDriven || postPlan.viralTitles.curiosity || postPlan.viralTitles.solution || postPlan.mainKeyword) : 
+  // [v3.4] Title 우선순위: solution(주제 포함 확률 높음) → curiosity → dataDriven 순
+  const selectedTitle = postPlan.viralTitles ?
+      (postPlan.viralTitles.solution || postPlan.viralTitles.curiosity || postPlan.viralTitles.dataDriven || postPlan.mainKeyword) :
       postPlan.viralTitle;
   // [v2.8] 내부 분석 메트릭이 제목에 노출되는 경우 안전한 제목으로 대체
   const internalMetricPattern = /경쟁[률율]?\s*[\d.]+|블루오션|painScore|competitionIndex|searchVolume|documentCount|\b0\.\d{2}\b|blue ocean|competition index/i;
   const safeTitle = internalMetricPattern.test(String(selectedTitle || ''))
-      ? (postPlan.viralTitles?.curiosity || postPlan.viralTitles?.solution || postPlan.mainKeyword || selectedTitle)
+      ? (postPlan.viralTitles?.solution || postPlan.viralTitles?.curiosity || postPlan.viralTitles?.dataDriven || postPlan.mainKeyword || selectedTitle)
       : selectedTitle;
   
   let thumbnailSearchKeyword = safeTitle;
@@ -2820,8 +2936,8 @@ app.post('/api/generate-post', async (req, res) => {
 
   const currentDate = new Date().toISOString().split('T')[0];
 
-  // [v3.0] 슬러그: AI slug 제거 → imageSearchKeywords[0](영문) 우선 → mainKeyword 번역 fallback
-  const slugSource = (Array.isArray(postPlan.imageSearchKeywords) && postPlan.imageSearchKeywords[0]) || postPlan.mainKeyword;
+  // [v3.4] 슬러그 결정: AI 기획안(slug) 최우선 → imageSearchKeywords[0](영문) → mainKeyword 번역 fallback
+  const slugSource = postPlan.slug || (Array.isArray(postPlan.imageSearchKeywords) && postPlan.imageSearchKeywords[0]) || postPlan.mainKeyword;
   const fallbackSource = postPlan.mainKeyword || safeTitle;
   const finalSlug = makeUniqueSlug(slugSource, fallbackSource, `${postPlan.mainKeyword}|${selectedCategory}`);
 
@@ -2899,10 +3015,10 @@ app.post('/api/generate-post', async (req, res) => {
       }
   }
 
-  // [v2.4] FAQ 추출 → frontmatter faq: 배열 (Hugo head에서 JSON-LD로 변환됨)
+  // [v3.3] FAQ → frontmatter faq: (본문 Markdown 추출을 최우선 — 기획 JSON faq와 개수 불일치 시 스키마 일치)
   const aiFaq = Array.isArray(postPlan.faq) ? postPlan.faq.filter(x => x && x.q && x.a) : [];
   const extractedFaq = extractFaqFromMarkdown(bodyMarkdown);
-  const faqList = aiFaq.length ? aiFaq : extractedFaq;
+  const faqList = extractedFaq.length > 0 ? extractedFaq : aiFaq;
 
   const yamlEscape = (s) => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 

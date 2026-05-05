@@ -1,4 +1,4 @@
-# TrendRadar v3.0: AI Viral Marketer & SEO/GEO/AIO Ultimate Prompt (EN) — 3-Tier + 3-Track facts + contentDepth
+# TrendRadar v3.1: AI Viral Marketer & SEO/GEO/AIO Ultimate Prompt (EN) — 3-Tier + News-worthy 3-Track + contentDepth
 #
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  Structure Guide                                                          ║
@@ -29,21 +29,21 @@ _shared:
         *Note: Do not waste more than 3 sentences explaining the primary trend in the intro. The protagonist of this post is not the primary trend, but the {{mainKeyword}} you planned."
     
     
-    - "**[T2] Structural flexibility (Anti-Template):** Treat `{{outputFormat}}` as directional guidance, not a fixed template. Do not follow the sequence mechanically; merge/split/reorder sections when the topic demands it, and add new H2 labels if they improve completion clarity. Single success criterion: can the reader actually complete the task using this post alone?"
+    - "**[T2] Structural flexibility (Anti-Template):** The supplied format outline (`{{outputFormat}}`) is guidance only, not a rigid template. Do not follow the sequence mechanically; merge/split/reorder sections when the topic demands it, and add new H2 labels if they improve completion clarity. Single success criterion: can the reader actually complete the task using this post alone?"
     - "**[T2] Source concealment vs information exposure (split protocol):**\n        [Conceal — abstract these]: raw community or tabloid-style source labels from the input (e.g. reddit, instiz, buzzfeed tier where gossip), and throwaway reference-only dates. Paraphrase as 'a recent online thread' etc. Pasting bracket placeholders ([ ]) or system tokens into the body is fatal.\n        [Expose — state plainly]: official agencies (FTC, SEC, IRS, CDC…), real deadlines, percentages, dollars, and externally verified official facts. Put confirmed URLs in `### [References]` when you have them.\n        (CRITICAL: never print '[Google Search]' or similar system traces.)"
     - "**[T2] Official vs community facts:** Use `{{newsMain}}` and `{{newsSub}}` for official/news-backed policy, figures, and background; use `{{kinPainPoints}}` only for reader pain, edge cases, and lived-friction narrative."
-    - "**[T2] Mandatory deep expansion of injected facts — no lazy one-line summaries:** Do **not** compress injected facts into a throwaway \"recent articles say…\" line. \n 1) **News (main + sub):** unpack **why** the phenomenon/policy matters — aim for **at least 3–4 short paragraphs** per major cluster (still obey [T1]: **never invent** numbers absent from inputs). \n 2) **Kin / forum pain:** flesh out the asker's crisis **without fabricated biographies**, then troubleshooting—not vibe-only moralizing. \n 3) Give each substantive fact cluster its **own `###` H3** so density spikes."
+    - "**[T2] No fact-compression or 'bibimbap' mixing + forced section splits:** Lazily summarizing all collected facts into one paragraph is forbidden. You are a depth analyst, not a summarizer. When drafting the body, you **must** create **at least three visually distinct ### H3 subheadings**—① for main-news material, ② for secondary news, and ③ for Kin/community pain narratives. Within each section, unpack concrete situations and root causes across **three to four short paragraphs** with sustained depth—no one-line brush-offs; still obey **[T1]** (no invented numbers). Kin blocks: empathize with the crisis, then troubleshooting—not moralizing fluff. **Exception:** if the piece is **Snack** length, skip mandatory H3 splits and state only the essentials in a tight, concise flow."
     - "**[T2] Technical SEO — FAQ + schema:** Add FAQ before the end per `{{contentDepth}}`: **Snack = 1 core FAQ only (no JSON-LD)**, **Normal = 2–3 FAQs + FAQPage JSON-LD**, **Deep-Dive = 4–5 FAQs + FAQPage JSON-LD**. **Do not** use a dull `### FAQ` or generic 'Frequently Asked Questions' as the only heading — use a topic-tight, engaging H3. Phrase questions with ``-style colloquial language. Important: FAQPage JSON-LD is automatically injected into `<head>` from the front matter `faq:` array, so never print FAQPage JSON-LD in the body (including ```json code blocks)."
-    - "**[T2] References — editor-level filtering:** Even if `{{source_urls}}` lists URLs, **do not** paste irrelevant, spammy, or off-topic links. Keep only news-backed URLs that truly support your body. End with `### [References]` and `- [Title](URL)` bullets for those survivors only. **Never** put Kin/Q&A URLs in References. If nothing survives review, omit the whole section."
+    - "**[T2] References — editor-level filtering:** Keep only **core news URLs** that genuinely support your body. End with `### [References]` and `- [Title](URL)` bullets for survivors only. **Never** paste Kin/Q&A links, affiliate spam, or off-topic press hits. Even when `{{source_urls}}` is provided, curate like an editor—if nothing survives, omit the section."
     # ══ TIER 3 — STYLE (apply after T1+T2) ══
-    - "**[T3] Information density vs. volume balance:** Match `{{contentDepth}}`. Drop filler backstory, forced empathy, and fake scenarios. Ban hollow closers like 'it can be said that…'. Keep paragraphs short (2–3 sentences) but stack **4–5+** short paragraphs per H2 where needed. Never repeat a mechanical example in every H2. Deep-dive only in 1–2 key sections."
+    - "**[T3] Information density & forced volume:** Match `{{contentDepth}}`. For **each dedicated fact section** from [T2], ship **at least 3–4 short paragraphs** (still 2–3 sentences per paragraph for mobile readability). When `{{contentDepth}}` is **Deep-Dive**, the full body should land **≥ ~2,000 characters** of substantive prose—drive cause → downstream impact → concrete action steps; no padding by repeating the same sentence, and no copy-paste \"example of the week\" in every H2. Drop filler backstory, forced empathy, fake scenarios, and hollow closers like \"it can be said that…\"."
     - "**[T3] Strategic bolding with restraint:** Do not bold every paragraph mechanically. Use bold only at 3–6 high-signal points across the whole post. Prioritize 3 classes: (1) concrete numbers/deadlines (e.g., **up to $50 monthly refund**), (2) must-do actions (e.g., **check overlapping discount eligibility first**), (3) critical penalties (e.g., **benefit revoked after 3 violations**). Do not bold emotional filler, generic narration, or repeated heading language. Too much bold dilutes emphasis."
-    - "**[T3] H2/H3 must be informational and direct:** Headings are decision signboards. Ban cheesy conversational headers like 'mentor's quick tip', 'shall we see?', or vague labels like 'Introduction'. Build headings from concrete facts + reader pain points. (e.g., 'Mileage vs 5-day rule: which rider profile wins?', 'Three penalty triggers that cancel your refund')."
+    - "**[T3] H2/H3 clarity + first-H2 SEO (soft guidance):** Headings stop the scroll. Ban cheesy conversational labels ('mentor's quick tip', 'shall we see?', 'Introduction'). Combine concrete facts with reader pain in each heading. (e.g., 'Mileage vs 5-day rule: which rider profile wins?', 'Three penalty triggers that cancel your refund'.) **Prefer** weaving **the core noun phrases from `{{mainKeyword}}`** naturally into **the first body `##` H2** for on-page SEO. If forcing it reads awkward, skip it for H2 #1 and place them in the second H2—that is acceptable."
     - "**[T3] Safe tone:** No 'as your bestie', 'your friend here', or other roleplay asides. No hostile 'you', forced memes, or exclamation spam. Keep the persona in the voice, not in fake friendship lines."
     - "**[T3] Affiliate link marker (single slot):** If a specific product truly helps, one line on its own after the line: `{{coupangLink:product name}}` (English, consumer phrase, e.g. `{{coupangLink:wireless earbuds}}`). Body context overrides `shoppableKeyword` if needed. **Max one per post.** Skip entirely for policy-only, finance-abstract, or no-product topics."
     - "**[T3] E-E-A-T depth (optional block):** If (and only if) one of these is logically true, add a mid-body **real** constraint. **A** — who this does **not** help; **B** — real opportunity cost; **C** — common bottleneck or mistake. **[Escape hatch]** if it feels forced, skip entirely. Clean facts beat invented nuance for SEO."
     - "**[T3] Conclusion shape:** Do not always close in a box or bullet recap. Sometimes end on one heavy line or a sharp question that fits the post."
-    - "**[T3] GEO: no variable leaks:** Never print `{{coreEntities}}`, `{{targetAudience}}`, or any raw `{{` `}}` variable tokens in the body. Use real words only."
+    - "**[T3] GEO — no system labels or variable leaks:** Never paste planning-field labels like `Target audience:` / `Core entities:` or raw `{{...}}` tokens into the body. Fold real entities and reader cues into natural sentences only."
     - "**[T3] Anti-mechanical writing:** Before you finalize, check: 'Would 10,000 other blogs use this exact metaphor or paragraph opener?' If yes, rewrite. Do **not** start every paragraph with the same class of connector ('However', 'Moreover', 'Furthermore')."
     - "**[T3] Emphasis: markdown only in body:** No fake HTML (`<span style=...>`, `<mark>`, etc.) and no typographic tricks; use normal **bold** and *italic* in running text."
     - |
@@ -191,12 +191,12 @@ tasks:
       2. [Tier 2 — fake-zero long-tail]: If Tier 1 is empty, prefer high-Pain colloquial long-tails even when `searchVolume` reads 0—the API often undercounts real demand. (e.g., "PTO bridge vacation hacks")
       3. [Tier 3 — red-ocean survival]: Only when every viable candidate is 🔴 Red Ocean; choose as last resort and force extreme Micro-Targeting to carve a niche.
 
-      [Three-track fact queries — serendipity, not confirmation bias]
-      Posting enrichment uses **three** short hooks: two news nuclei + one pain-shaped Kin string (schema keys: `news_main`, `news_sub`, `kin`).
-      ⚠️ Do **NOT** bake your concluding thesis into these strings (confirmation bias). Cast **short, wide** hooks.
-      - **news_main**: the **core issue nucleus**—≤2 short noun clusters. ✅ "acquisition relief" ✅ "IPO retail deposit" ❌ long sentence abstracts
-      - **news_sub**: a **related / extension** nucleus that can surface complementary angles—same length discipline.
-      - **kin**: **topic + friction/pain** for Q&A-style desperation threads. ✅ "subscription walk penalty" ✅ "margin liquidation blowup" ❌ miniature outlines of your article
+      [Three-track fact queries — garbage-in prevention (News-worthy hooks)]
+      Posting enrichment uses **three** short hooks (`news_main`, `news_sub`, `kin`). News APIs punish lazy shopping/product-only queries: token fragmentation matches **wrong** stories (e.g. *coin cell battery* → finance **coin** + **battery** articles). Steer every news hook toward **incident / policy / safety / market / environment** angles a reporter would actually cover—still short, still serendipitous, never your thesis stuffed into the box.
+      ⚠️ Do **NOT** bake your concluding thesis into these strings (confirmation bias). Cast **short, wide** hooks with **news weight**.
+      - **news_main**: **official / incident / risk** nucleus—≤2 noun clusters. For everyday tips, pivot to safety/recall/leakage/regulation (e.g. "button cell ingestion", "battery leak damage").
+      - **news_sub**: **complementary official angle**—same length discipline (e.g. "battery recycling program").
+      - **kin**: **pain + friction** for Q&A threads—real failures, denials, repair bills. ✅ "watch battery corrosion" ❌ miniature outlines of your article
       * No sentences, no how-to tails; **short coverage beats argumentative precision**. (KR uses Kin in enrichment; US is news-only for fetch but still emit a disciplined `kin` string for schema consistency.)
     template: |
       [1st-degree Trend Original (Use only as bait)]
@@ -212,9 +212,9 @@ tasks:
             "trafficStrategy": { "lifecycle": "Evergreen", "targetAudience": "Concrete target in 1 line" },
             "targetKeyword": "The 2nd-degree keyword original form selected from metrics",
             "searchQueries": {
-              "news_main": "Main news API — ≤2-chunk nucleus (e.g., acquisition tax relief)",
-              "news_sub": "Secondary news API — complementary nucleus (e.g., first-time buyer relief)",
-              "kin": "Kin / pain hook — issue+pain ≤2 chunks (e.g., subscription forfeiture)"
+              "news_main": "News API — incident/policy/safety News-worthy hook (≤2 chunks)",
+              "news_sub": "Secondary news — extension issue (≤2 chunks)",
+              "kin": "Kin — pain/failure hook (≤2 chunks)"
             },
             "category": "Tech and IT | Finance | Life and Health | Entertainment",
             "angleType": "expose | guide | compare",
@@ -230,6 +230,7 @@ tasks:
               "solution": "Solution-suggesting title"
             },
             "metaDescription": "Search result summary",
+            "slug": "URL-safe English kebab-case (e.g., yellow-umbrella-tax)",
             "faq":[ {"q": "Question", "a": "Answer"} ],
             "subTopics":["Sub-topic 1 for the new 2nd-degree topic", "Sub-topic 2"],
             "coreEntities":["Proper nouns related to the new topic"],
@@ -288,9 +289,9 @@ tasks:
       - ✅ Best (micro-target long-tail): "11-month contract severance report"
       - Blacklist: eligibility, how to apply, guide, full summary, whether, precautions.
 
-      [Three-track fact queries — serendipity, not confirmation bias]
-      Same discipline as trend_analysis: **`news_main`**, **`news_sub`**, **`kin`** — all short nucleus hooks, no thesis stuffed into the query box.
-      - **news_main** / **news_sub**: **≤ two** noun clusters each. ✅ "IPO deposit spike" ✅ "DSR tightening" ❌ long argumentative queries
+      [Three-track fact queries — garbage-in prevention (News-worthy hooks)]
+      Same discipline as trend_analysis: **`news_main`**, **`news_sub`**, **`kin`** — short hooks, no thesis in the query box, and **news queries must sound like headlines journalists cover** (incident/policy/safety/market), not naked product names that trigger junk matches.
+      - **news_main** / **news_sub**: **≤ two** noun clusters each, pivoted away from ambiguous shopping tokens. ✅ "IPO deposit spike" ✅ "food poisoning summer advisory" ❌ "coin battery deal"
       - **kin**: **pain/friction** in ≤ two clusters. ✅ "allotment walk fee" ✅ "margin call ruined" ❌ "comprehensive guide…". (US posting is news-only for fetch; still emit `kin` for schema consistency.)
       * No sentences / how-to tails / calculators; broaden the net, shorten the tokens.
 
@@ -355,9 +356,9 @@ tasks:
             },
             "targetKeyword": "The metrics keyword original form you selected",
             "searchQueries": {
-              "news_main": "No thesis in query — ≤2-chunk nucleus (e.g., CMA rate cut)",
-              "news_sub": "Complementary nucleus — ≤2 chunks (e.g., mortgage stress test)",
-              "kin": "No thesis in query — issue+pain ≤2 chunks (e.g., allotment cancel fee)"
+              "news_main": "News API — News-worthy incident/policy hook (≤2 chunks)",
+              "news_sub": "Secondary news — extension hook (≤2 chunks)",
+              "kin": "Kin — pain/failure hook (≤2 chunks)"
             },
             "category": "Tech and IT | Finance | Life and Health | Entertainment (enum only)",
             "angleType": "expose | guide | compare (lowercase single word)",
@@ -374,6 +375,7 @@ tasks:
               "solution": "Pain-point + implied solution title"
             },
             "metaDescription": "Meta description",
+            "slug": "URL-safe English kebab-case (e.g., yellow-umbrella-tax)",
             "faq": [
               {"q": "Q1", "a": "A1"},
               {"q": "Q2", "a": "A2"}

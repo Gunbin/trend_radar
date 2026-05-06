@@ -31,6 +31,7 @@ _shared:
     
     - "**[T2] Structural flexibility (Anti-Template):** The supplied format outline (`{{outputFormat}}`) is guidance only, not a rigid template. Do not follow the sequence mechanically; merge/split/reorder sections when the topic demands it, and add new H2 labels if they improve completion clarity. Single success criterion: can the reader actually complete the task using this post alone?"
     - "**[T2] Source concealment vs information exposure (split protocol):**\n        [Conceal — abstract these]: raw community or tabloid-style source labels from the input (e.g. reddit, instiz, buzzfeed tier where gossip), and throwaway reference-only dates. Paraphrase as 'a recent online thread' etc. Pasting bracket placeholders ([ ]) or system tokens into the body is fatal.\n        [Expose — state plainly]: official agencies (FTC, SEC, IRS, CDC…), real deadlines, percentages, dollars, and externally verified official facts. Put confirmed URLs in `### [References]` when you have them.\n        (CRITICAL: never print '[Google Search]' or similar system traces.)"
+    - "**[T2] Enriched fact priority:** If `{{newsMain}}` or `{{newsSub}}` contain actual article data, use those figures, dates, and institution names directly in the body. Do NOT invent numbers for sections where enriched facts are provided. If both are marked '[No ... facts available]', write around entities and context only — no fabricated stats ([T1])."
     - "**[T2] Official vs community facts:** Use `{{newsMain}}` and `{{newsSub}}` for official/news-backed policy, figures, and background; use `{{kinPainPoints}}` only for reader pain, edge cases, and lived-friction narrative."
     - "**[T2] No fact-compression or 'bibimbap' mixing + forced section splits:** Lazily summarizing all collected facts into one paragraph is forbidden. You are a depth analyst, not a summarizer. When drafting the body, you **must** create **at least three visually distinct ### H3 subheadings**—① for main-news material, ② for secondary news, and ③ for Kin/community pain narratives. Within each section, unpack concrete situations and root causes across **three to four short paragraphs** with sustained depth—no one-line brush-offs; still obey **[T1]** (no invented numbers). Kin blocks: empathize with the crisis, then troubleshooting—not moralizing fluff. **Exception:** if the piece is **Snack** length, skip mandatory H3 splits and state only the essentials in a tight, concise flow."
     - "**[T2] Technical SEO — FAQ + schema:** Add FAQ before the end per `{{contentDepth}}`: **Snack = 1 core FAQ only (no JSON-LD)**, **Normal = 2–3 FAQs + FAQPage JSON-LD**, **Deep-Dive = 4–5 FAQs + FAQPage JSON-LD**. **Do not** use a dull `### FAQ` or generic 'Frequently Asked Questions' as the only heading — use a topic-tight, engaging H3. Phrase questions with ``-style colloquial language. Important: FAQPage JSON-LD is automatically injected into `<head>` from the front matter `faq:` array, so never print FAQPage JSON-LD in the body (including ```json code blocks)."
@@ -98,10 +99,12 @@ _shared:
   post_writing_template_blocks:
     trust_anchor: |
       [Trust anchors — use as the factual spine of the body]
-      ① Core news facts: {{newsMain}}
+      Priority order: ① > ② > ③ (override ④ whenever actual data exists)
+      ① Core news facts (use figures/dates/institutions verbatim): {{newsMain}}
       ② Secondary / extension news facts: {{newsSub}}
-      ③ Community pain (Kin excerpts): {{kinPainPoints}}
-      ④ Planning-line draft: {{coreFact}}
+      ③ Community pain — Reddit Q&A or reader friction cases: {{kinPainPoints}}
+      ④ Planning-line draft (fallback only — no invented numbers): {{coreFact}}
+      Rule: If ① and ② are marked "[No ... facts available]", rely on ④ for framing but suppress all numeric claims.
     plan_fields: |
       [Post Plan]
       - Category: {{category}}
@@ -197,7 +200,7 @@ tasks:
       - **news_main**: **official / incident / risk** nucleus—≤2 noun clusters. For everyday tips, pivot to safety/recall/leakage/regulation (e.g. "button cell ingestion", "battery leak damage").
       - **news_sub**: **complementary official angle**—same length discipline (e.g. "battery recycling program").
       - **kin**: **pain + friction** for Q&A threads—real failures, denials, repair bills. ✅ "watch battery corrosion" ❌ miniature outlines of your article
-      * No sentences, no how-to tails; **short coverage beats argumentative precision**. (KR uses Kin in enrichment; US is news-only for fetch but still emit a disciplined `kin` string for schema consistency.)
+      * No sentences, no how-to tails; **short coverage beats argumentative precision**. The `kin` field is required for schema consistency — keep it disciplined and short regardless of region.
     template: |
       [1st-degree Trend Original (Use only as bait)]
       {{trends_data}}
@@ -292,7 +295,7 @@ tasks:
       [Three-track fact queries — garbage-in prevention (News-worthy hooks)]
       Same discipline as trend_analysis: **`news_main`**, **`news_sub`**, **`kin`** — short hooks, no thesis in the query box, and **news queries must sound like headlines journalists cover** (incident/policy/safety/market), not naked product names that trigger junk matches.
       - **news_main** / **news_sub**: **≤ two** noun clusters each, pivoted away from ambiguous shopping tokens. ✅ "IPO deposit spike" ✅ "food poisoning summer advisory" ❌ "coin battery deal"
-      - **kin**: **pain/friction** in ≤ two clusters. ✅ "allotment walk fee" ✅ "margin call ruined" ❌ "comprehensive guide…". (US posting is news-only for fetch; still emit `kin` for schema consistency.)
+      - **kin**: **pain/friction** in ≤ two clusters. ✅ "allotment walk fee" ✅ "margin call ruined" ❌ "comprehensive guide…". (The `kin` field is required for schema consistency — emit it even if enrichment sources differ by region.)
       * No sentences / how-to tails / calculators; broaden the net, shorten the tokens.
 
       [🔥 Emerging-Blog SEO Boost Rules — MANDATORY]
@@ -341,9 +344,9 @@ tasks:
       [User Input Text]
       {{manual_text}}
 
-      [Real-time Naver Search Metrics]
+      [Keyword Search Volume Metrics (Google Ads Keyword Planner)]
       {{metrics_data}}
-      Note: `relatedQueries(reference)` in metrics_data are auxiliary hints for reader language/search context, not primary topic selectors. Use them selectively with painScore.
+      Note: `relatedQueries(reference)` are Google autocomplete suggestions—auxiliary hints for reader language/search context, not primary topic selectors. `documentCount` may show N/A for EN keywords; rely on `competitionLabel` instead.
 
       Based on the text above, respond with the following JSON structure (Create {{topic_count}} plans).
       Metrics (`searchVolume`, `documentCount`, `competitionIndex`) are measured server-side—do **not** emit them.

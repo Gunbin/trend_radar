@@ -135,8 +135,9 @@ const ANALYSIS_RESPONSE_SCHEMA = {
 // - known-good(예: 낮은 competitionIndex + 높은 searchVolume) 구조를 과도하게 강등하지 않도록 보정
 function calcSeoViabilityScore(searchVolume, competitionIndex, documentCount) {
     const sv = typeof searchVolume === 'number' ? searchVolume : 0;
-    const dc = typeof documentCount === 'number' ? documentCount : 0;
     const ci = typeof competitionIndex === 'number' ? competitionIndex : null;
+    const hasDocCount = typeof documentCount === 'number';
+    const dc = hasDocCount ? documentCount : 0;
 
     // Hard gate: 유입 0이면 어떤 경우에도 생존점수 0
     if (!sv || sv <= 0) return 0;
@@ -152,11 +153,13 @@ function calcSeoViabilityScore(searchVolume, competitionIndex, documentCount) {
     else score += 1;
 
     // 경쟁 강도 절대값(문서수) (max ~5)
-    if (dc < 3000) score += 5;
-    else if (dc < 10000) score += 4;
-    else if (dc < 50000) score += 3;
-    else if (dc < 200000) score += 2;
-    else if (dc < 600000) score += 1;
+    if (hasDocCount) {
+        if (dc < 3000) score += 5;
+        else if (dc < 10000) score += 4;
+        else if (dc < 50000) score += 3;
+        else if (dc < 200000) score += 2;
+        else if (dc < 600000) score += 1;
+    }
 
     // 비율(competitionIndex)은 보조로만(보너스/패널티)
     if (ci !== null) {
@@ -177,7 +180,8 @@ function calcSeoViabilityScore(searchVolume, competitionIndex, documentCount) {
 // [v2.9] 기획안 품질 분류 — 하드게이트 + seoViabilityScore 기반 태깅
 function annotateAnalysisPriority(analysisResult, options = {}) {
     if (!analysisResult || !Array.isArray(analysisResult.blogPosts)) return analysisResult;
-    const COMPETITION_HARD_LIMIT = 3.0;
+    const lang = options.lang || 'ko';
+    const COMPETITION_HARD_LIMIT = lang === 'en' ? 4.5 : 3.0;
     const burstHardFilterEnabled = options?.burstHardFilterEnabled !== false;
 
     for (const post of analysisResult.blogPosts) {
@@ -709,6 +713,32 @@ function sanitizeMermaidBlocks(markdown) {
     });
 }
 
+// [v3.6] Hugo shortcode 균형 자동 보정
+// 모델 출력 편차로 warning/info/tip 등이 열리고 닫히지 않으면 빌드가 깨지므로,
+// 본문 말미에 누락된 닫힘 태그를 보수적으로 보강한다.
+function ensureShortcodeBalance(markdown) {
+    if (!markdown || typeof markdown !== 'string') return markdown;
+
+    const supported = ['warning', 'info', 'tip', 'note', 'danger', 'success'];
+    let fixed = markdown;
+
+    for (const name of supported) {
+        const openRe = new RegExp(`\\{\\{<\\s*${name}\\b[^>]*>\\}\\}`, 'g');
+        const closeRe = new RegExp(`\\{\\{<\\s*\\/\\s*${name}\\s*>\\}\\}`, 'g');
+        const openCount = (fixed.match(openRe) || []).length;
+        const closeCount = (fixed.match(closeRe) || []).length;
+        const missing = openCount - closeCount;
+
+        if (missing > 0) {
+            const closing = Array.from({ length: missing }, () => `{{< /${name} >}}`).join('\n');
+            fixed = `${fixed.trimEnd()}\n${closing}\n`;
+            logger.warn(`[Shortcode] '${name}' 닫힘 태그 ${missing}개 누락 감지 → 자동 보정`);
+        }
+    }
+
+    return fixed;
+}
+
 // --- Cloudinary Upload Helper ---
 async function uploadToCloudinary(url) {
   if (!url) return null;
@@ -858,6 +888,63 @@ function readPublishedIndex() {
         return Array.isArray(arr) ? arr : [];
     } catch (e) {
         logger.warn(`[Index] Read failed: ${e.message}`);
+        return [];
+    }
+}
+
+// [EN] Reddit Search — kin(페인포인트) 보강 (API Key 불필요, 공개 JSON)
+async function searchRedditKin(query, category = '') {
+    logger.api(`[Enrich] Reddit Search (kin) 요청: "${query}"`);
+    const startTime = Date.now();
+
+    // 카테고리 필터링이 API에서 404를 유발하므로 전체 검색으로 통일
+    const searchUrl = 'https://www.reddit.com/search.json';
+
+    try {
+        const res = await axios.get(searchUrl, {
+            params: { q: query, sort: 'relevance', limit: 5, type: 'link', t: 'year' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) TrendRadar/1.0' },
+            timeout: 6000
+        });
+
+        const posts = res.data?.data?.children || [];
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+
+        const results = posts
+            .filter(c => c.data?.title && c.data?.score > 1)
+            .map(c => ({
+                title:   c.data.title,
+                summary: (c.data.selftext || '').slice(0, 300).replace(/\n+/g, ' ').trim() || c.data.url || '',
+                url:     `https://reddit.com${c.data.permalink}`,
+                score:   c.data.score,
+                subreddit: c.data.subreddit
+            }));
+
+        logger.success(`[Enrich] Reddit kin 검색 완료 (${elapsed}s, ${results.length}건)`);
+        return results;
+    } catch (e) {
+        if (e.response?.status === 429) {
+            logger.warn('[Enrich] Reddit Search 429. 3초 대기 후 재시도...');
+            await sleep(3000);
+            try {
+                const retry = await axios.get(searchUrl, {
+                    params: { q: query, sort: 'relevance', limit: 5, type: 'link', t: 'year' },
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) TrendRadar/1.0' },
+                    timeout: 6000
+                });
+                return (retry.data?.data?.children || [])
+                    .filter(c => c.data?.title && c.data?.score > 1)
+                    .map(c => ({
+                        title:   c.data.title,
+                        summary: (c.data.selftext || '').slice(0, 300).replace(/\n+/g, ' ').trim() || '',
+                        url:     `https://reddit.com${c.data.permalink}`,
+                        score:   c.data.score,
+                        subreddit: c.data.subreddit
+                    }));
+            } catch (_) { return []; }
+        }
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        logger.error(`[Enrich] Reddit kin 검색 실패 (${elapsed}s)`, e.message);
         return [];
     }
 }
@@ -1150,8 +1237,9 @@ function getSourceLimit(sourceName, itemScale = 1.0) {
 
 function formatMetricsLine(kw, data, lang = 'ko') {
   const suggestions = (data.suggestions || []).join(', ') || (lang === 'en' ? 'none' : '없음');
+  const docCount = data.documentCount !== null ? data.documentCount : 'N/A (not provided)';
   if (lang === 'en') {
-    return `- keyword: ${kw} / searchVolume: ${data.searchVolume} / documentCount: ${data.documentCount} / competitionIndex: ${data.competitionIndex} / competitionLabel: ${data.competitionLabel || '⚪ Unmeasurable'} / relatedQueries(reference): ${suggestions}`;
+    return `- keyword: ${kw} / searchVolume: ${data.searchVolume} / documentCount: ${docCount} / competitionIndex: ${data.competitionIndex ?? 'N/A'} / competitionLabel: ${data.competitionLabel || '⚪ Unmeasurable'} / relatedQueries(reference): ${suggestions}`;
   }
   return `- 키워드: ${kw} / 월간검색량: ${data.searchVolume} / 발행문서수: ${data.documentCount} / 경쟁지수: ${data.competitionIndex} / 경쟁강도: ${data.competitionLabel || '⚪ 측정불가'} / 연관검색어(참고): ${suggestions}`;
 }
@@ -1664,10 +1752,10 @@ app.get('/api/trends', async (req, res) => {
             google: "Google Trends. Massive societal issues, news, and sports trends experiencing explosive search volume across the region.",
             reddit: "Reddit r/popular. Real-time overall popular posts, memes, and hot issues from the largest English-speaking community.",
             yahoo: "Yahoo News. Trends centered around major current affairs, economy, and political news in the English-speaking world.",
-            redditScams: "Reddit r/Scams. Information to prevent financial loss (Loss Aversion) for readers, such as the latest scam methods and scam warnings.",
-            redditPoverty: "Reddit r/povertyfinance. Welfare and survival information such as financial tips, government subsidies, and survival strategies for low-income individuals.",
-            redditFrugal: "Reddit r/Frugal. Practical life tips for smart consumers, including extreme money-saving tips and cost-effective product recommendations.",
-            buzzfeed: "BuzzFeed Trending. Light entertainment, Hollywood gossip, TikTok life hacks, and psychological tests going viral in the US."
+            redditScams: "Real-time scam alerts and fraud warnings to help readers avoid financial loss — latest tactics, red flags, and community-reported cases.",
+            redditPoverty: "Budgeting tips, government benefit guides, and financial survival strategies shared by readers stretching every dollar.",
+            redditFrugal: "Extreme frugality hacks, cost-cutting strategies, and smart-shopper tips from the most money-conscious community on Reddit.",
+            buzzfeed: "Viral entertainment, celebrity buzz, TikTok trends, and pop-psychology quizzes dominating US social feeds right now."
         }
     });
     } else {
@@ -1920,6 +2008,136 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
     return originalMetrics;
 }
 
+function calcCpcWeight(lowBid, highBid) {
+    const avg = ((lowBid || 0) + (highBid || 0)) / 2;
+    if (avg <= 0)  return 1.0;
+    if (avg <= 1)  return 1.0;
+    if (avg <= 3)  return 1.2;
+    if (avg <= 8)  return 1.5;
+    return 2.0;
+}
+
+function buildEnCompetitionIndex(competition, lowBid, highBid) {
+    const COMP_BASE = { LOW: 0.3, MEDIUM: 1.2, HIGH: 3.8, UNSPECIFIED: null };
+    const base = COMP_BASE[competition];
+    if (base === null || base === undefined) return null;
+    return parseFloat((base * calcCpcWeight(lowBid, highBid)).toFixed(2));
+}
+
+function attachCompetitionLabelEN(metric) {
+    const ci = metric.competitionIndex;
+    if (ci === null || ci === undefined) {
+        metric.competitionLabel = '⚪ Unmeasurable';
+    } else if (ci < 0.6) {
+        metric.competitionLabel = '🟢 Blue Ocean';
+    } else if (ci < 2.5) {
+        metric.competitionLabel = '🟡 Moderate';
+    } else {
+        metric.competitionLabel = '🔴 Red Ocean';
+    }
+    return metric;
+}
+
+// [EN] Google Ads Keyword Planner API 기반 검색량/경쟁도 조회
+async function getGoogleAdsKeywordMetrics(keywords, lang = 'en', country = 'US') {
+    const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+    const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+    const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+    const customerId   = process.env.GOOGLE_ADS_CUSTOMER_ID;
+    const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+
+    if (!clientId || !clientSecret || !devToken || !refreshToken || !customerId) {
+        logger.warn('[Metrics-EN] Google Ads API keys missing. Returning empty metrics.');
+        return {};
+    }
+
+    const GEO_TARGET_MAP = { 'US': '2840', 'GB': '2826', 'AU': '2036', 'CA': '2124' };
+    const LANGUAGE_MAP = { 'en': '1000' };
+    const geoTargetId = GEO_TARGET_MAP[country] || GEO_TARGET_MAP['US'];
+    const languageId  = LANGUAGE_MAP[lang]      || LANGUAGE_MAP['en'];
+
+    const VOLUME_RANGE_MAP = {
+        'UNSPECIFIED':        0, 'UNKNOWN':            0, 'ZERO':               0,
+        'VERY_LOW':           5, 'LOW':                50, 'LOW_MEDIUM':         500,
+        'MEDIUM':             5000, 'MEDIUM_HIGH':        50000, 'HIGH':               500000,
+        'VERY_HIGH':          1500000
+    };
+
+    try {
+        const { GoogleAdsApi } = await import('google-ads-api');
+        
+        const client = new GoogleAdsApi({
+            client_id:     clientId,
+            client_secret: clientSecret,
+            developer_token: devToken
+        });
+
+        const customerOptions = {
+            customer_id:   customerId,
+            refresh_token: refreshToken
+        };
+        
+        if (loginCustomerId) {
+            customerOptions.login_customer_id = loginCustomerId;
+        }
+
+        const customer = client.Customer(customerOptions);
+
+        const results = await customer.keywordPlanIdeas.generateKeywordIdeas({
+            customer_id: customerId,
+            language:    `languageConstants/${languageId}`,
+            geo_target_constants: [`geoTargetConstants/${geoTargetId}`],
+            keyword_seed: { keywords }
+        });
+
+        const metrics = {};
+
+        for (const idea of results) {
+            const kw  = idea.text;
+            const m   = idea.keyword_idea_metrics;
+
+            if (!kw || !m) continue;
+
+            const volumeEnum = m.avg_monthly_searches_range?.min_avg_monthly_searches || 'UNKNOWN';
+            const volumeNum  = VOLUME_RANGE_MAP[volumeEnum] ?? 0;
+            const exactVolume = typeof m.avg_monthly_searches === 'number' ? m.avg_monthly_searches : null;
+            const finalVolume = exactVolume ?? volumeNum;
+
+            const compEnum   = m.competition || 'UNKNOWN';
+            const lowBid  = m.low_top_of_page_bid_micros  ? m.low_top_of_page_bid_micros  / 1_000_000 : 0;
+            const highBid = m.high_top_of_page_bid_micros ? m.high_top_of_page_bid_micros / 1_000_000 : 0;
+            const compIndex = buildEnCompetitionIndex(compEnum, lowBid, highBid);
+
+            metrics[kw] = {
+                searchVolume:     finalVolume,
+                documentCount:    null,
+                competitionIndex: compIndex,
+                competitionLabel: attachCompetitionLabelEN({ competitionIndex: compIndex }).competitionLabel,
+                _source:          'google_ads',
+                _volumeRaw:       volumeEnum,
+                _competitionRaw:  compEnum,
+                _cpcAvg:          (lowBid + highBid) / 2
+            };
+        }
+
+        const topKeywords = keywords.slice(0, 5);
+        await Promise.all(topKeywords.map(async (kw) => {
+            if (!metrics[kw]) metrics[kw] = {
+                searchVolume: 0, documentCount: null,
+                competitionIndex: null, competitionLabel: '⚪ Unmeasurable'
+            };
+            metrics[kw].suggestions = await getGoogleSuggestions(kw, lang, country);
+        }));
+
+        logger.success(`[Metrics-EN] Google Ads Keyword Planner 완료: ${Object.keys(metrics).length}건`);
+        return metrics;
+    } catch (e) {
+        logger.error('[Metrics-EN] Google Ads API 오류:', e.message);
+        return {};
+    }
+}
+
 // [v3.0] 모델 출력의 searchVolume/documentCount/competitionIndex는 신뢰하지 않고,
 //        서버에서 수집한 실측 metrics로 덮어쓴다(운영 안정성: SEARCH==DOCS 같은 패턴 방지).
 function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
@@ -1933,11 +2151,11 @@ function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
         if (!m) continue;
 
         const sv = typeof m.searchVolume === 'number' ? m.searchVolume : 0;
-        const dc = typeof m.documentCount === 'number' ? m.documentCount : 0;
+        const dc = typeof m.documentCount === 'number' ? m.documentCount : null;
         const ci =
             typeof m.competitionIndex === 'number'
                 ? m.competitionIndex
-                : parseFloat((dc / Math.max(sv, 1)).toFixed(2));
+                : (dc !== null ? parseFloat((dc / Math.max(sv, 1)).toFixed(2)) : null);
 
         post.searchVolume = sv;
         post.documentCount = dc;
@@ -2061,7 +2279,11 @@ async function buildAnalysisPromptInput({ trends, manualText, config, region = '
     if (searchTerms.length > 0) {
         const suggestLang = region === 'US' ? 'en' : 'ko';
         const suggestCountry = region === 'US' ? 'US' : 'KR';
-        measuredMetrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
+        if (region === 'US') {
+            measuredMetrics = await getGoogleAdsKeywordMetrics(searchTerms, suggestLang, suggestCountry);
+        } else {
+            measuredMetrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
+        }
         metricsContext = Object.entries(measuredMetrics).map(([kw, data]) =>
             formatMetricsLine(kw, data, lang)
         ).join('\n');
@@ -2122,7 +2344,7 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
         searchIntent: postPlan.searchIntent,
         contentDepth: normalizedContentDepth,
         conclusionType: postPlan.conclusionType || 'Q&A',
-        coreFact: postPlan.coreFact || '[팩트 없음 — 수치·통계 창작 절대 금지. 기획안에 제공된 키워드와 맥락만 활용할 것]',
+        coreFact: postPlan.coreFact || (lang === 'en' ? '[No fact — NEVER invent numbers, stats, or figures. Use only keyword context and entities from the plan.]' : '[팩트 없음 — 수치·통계 창작 절대 금지. 기획안에 제공된 키워드와 맥락만 활용할 것]'),
         coreEntities: postPlan.coreEntities ? (Array.isArray(postPlan.coreEntities) ? postPlan.coreEntities.join(', ') : postPlan.coreEntities) : '',
         subTopics: postPlan.subTopics ? (Array.isArray(postPlan.subTopics) ? postPlan.subTopics.join(', ') : postPlan.subTopics) : '',
         seoKeywords: tags.join(', '),
@@ -2138,6 +2360,7 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
             ? postPlan.enrichedFacts.sourceUrls.join('\n')
             : (Array.isArray(postPlan.sourceUrls) ? postPlan.sourceUrls.join('\n') : ''),
         newsMain: (() => {
+            const noMainNews = lang === 'en' ? '[No main news facts available]' : '[메인 뉴스 팩트 없음]';
             const ef = postPlan.enrichedFacts || {};
             const arr =
                 Array.isArray(ef.newsMain) && ef.newsMain.length
@@ -2145,16 +2368,20 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
                     : Array.isArray(ef.news) && ef.news.length
                       ? ef.news
                       : [];
-            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : '[메인 뉴스 팩트 없음]';
+            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : noMainNews;
         })(),
         newsSub: (() => {
+            const noSubNews  = lang === 'en' ? '[No secondary news facts available]' : '[보조 뉴스 팩트 없음]';
             const ef = postPlan.enrichedFacts || {};
             const arr = Array.isArray(ef.newsSub) && ef.newsSub.length ? ef.newsSub : [];
-            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : '[보조 뉴스 팩트 없음]';
+            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : noSubNews;
         })(),
-        kinPainPoints: (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.kin) && postPlan.enrichedFacts.kin.length > 0)
-            ? postPlan.enrichedFacts.kin.map((f, i) => `${i + 1}. ${f}`).join('\n')
-            : '[수집된 커뮤니티 실제 사례 없음]',
+        kinPainPoints: (() => {
+            const noKin = lang === 'en' ? '[No community Q&A cases collected]' : '[수집된 커뮤니티 실제 사례 없음]';
+            return (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.kin) && postPlan.enrichedFacts.kin.length > 0)
+                ? postPlan.enrichedFacts.kin.map((f, i) => `${i + 1}. ${f}`).join('\n')
+                : noKin;
+        })(),
         outputFormat: FORMAT_MAP[`${angle}-${normalizedContentDepth}`] || '',
         context_url_1: "IMAGE_PLACEHOLDER_1",
         context_url_2: "IMAGE_PLACEHOLDER_2",
@@ -2350,7 +2577,8 @@ app.post('/api/analyze', async (req, res) => {
             patched.blogPosts = diversifyContentDepth(patched.blogPosts);
         }
         const analysisJson = annotateAnalysisPriority(patched, {
-            burstHardFilterEnabled: config?.burstHardFilterEnabled !== false
+            burstHardFilterEnabled: config?.burstHardFilterEnabled !== false,
+            lang
         });
         const PRIORITY_ORDER = { primary: 0, secondary: 1, review: 2 };
         if (Array.isArray(analysisJson.blogPosts)) {
@@ -2625,13 +2853,21 @@ async function enrichPostPlan(postPlan, region = 'KR') {
         if (region === 'US') {
             newsMainResults = await searchNewsAPI(queryMain);
             if (newsMainResults.length === 0) newsMainResults = await searchNewsAPI(postPlan.mainKeyword);
+
             await sleep(500);
             newsSubResults = await searchNewsAPI(querySub);
             if (newsSubResults.length === 0 && querySub !== postPlan.mainKeyword) {
                 newsSubResults = await searchNewsAPI(postPlan.mainKeyword);
             }
+
+            await sleep(500);
+            kinResults = await searchRedditKin(queryKin, postPlan.category);
+            if (kinResults.length === 0) {
+                kinResults = await searchRedditKin(postPlan.mainKeyword, postPlan.category);
+            }
+
             newsMainResults = newsMainResults.filter((r) => new Date(r.pubDate) >= threeYearsAgo);
-            newsSubResults = newsSubResults.filter((r) => new Date(r.pubDate) >= threeYearsAgo);
+            newsSubResults  = newsSubResults.filter((r) => new Date(r.pubDate) >= threeYearsAgo);
         } else {
             newsMainResults = await searchNaverNews(queryMain);
             if (newsMainResults.length === 0) newsMainResults = await searchNaverNews(postPlan.mainKeyword);
@@ -2716,14 +2952,16 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             await sleep(300);
         }
 
-        const factKin = kinResults.slice(0, 2).map((r) => `[실제 고민/사례] ${r.title} - ${r.summary}`);
+        const kinLabel = (region === 'US') ? '[Real Q&A / Community Case]' : '[실제 고민/사례]';
+        const factKin = kinResults.slice(0, 2).map((r) => `${kinLabel} ${r.title} - ${r.summary}`);
 
         const officialUrls = [...newsMainResults.slice(0, 2), ...newsSubResults.slice(0, 2)]
             .filter((r) => r.url)
             .map((r) => `- [${r.title}](${r.url})`);
 
+        const kinSourceLabel = (region === 'US') ? 'Reddit kin' : '지식인';
         logger.success(
-            `[Enrich] v3.2 크롤링 보강 완료 (메인 ${factMain.length}건, 보조 ${factSub.length}건, 지식인 ${factKin.length}건) — ${postPlan.mainKeyword}`
+            `[Enrich] v3.2 크롤링 보강 완료 (메인 ${factMain.length}건, 보조 ${factSub.length}건, ${kinSourceLabel} ${factKin.length}건) — ${postPlan.mainKeyword}`
         );
 
         return {
@@ -2838,6 +3076,7 @@ app.post('/api/generate-post', async (req, res) => {
   ).trim();
   bodyMarkdown = normalizeDiagramShortcodes(bodyMarkdown).trim();
   bodyMarkdown = sanitizeMermaidBlocks(bodyMarkdown).trim();
+  bodyMarkdown = ensureShortcodeBalance(bodyMarkdown).trim();
   bodyMarkdown = bodyMarkdown.replace(/\n{3,}/g, '\n\n').trim();
 
   const usedImageUrls = new Set(); // 포스팅 단위 중복 이미지 방지용 Set

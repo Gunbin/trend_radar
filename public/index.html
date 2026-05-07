@@ -216,8 +216,8 @@
                           <label><input type="checkbox" id="cfg-use-search" checked> ENABLE_GOOGLE_SEARCH (GROUNDING)</label>
                           <label><input type="checkbox" id="cfg-burst-hard-filter" checked> ENABLE_BURST_HARD_FILTER</label>
                       </div>
-                      <p class="hint-text" style="margin-top:5px; font-size:0.8rem; opacity:0.7;">* ENABLE_GOOGLE_SEARCH: 최신 팩트체크를 수행하지만 API 쿼터 소진이 빠를 수 있습니다.</p>
-                      <p class="hint-text" style="margin-top:3px; font-size:0.8rem; opacity:0.7;">* ENABLE_BURST_HARD_FILTER: Burst 주제를 분석 단계에서 자동 review로 강등합니다. (기본 ON)</p>
+                      <p id="hint-use-search" class="hint-text" style="margin-top:5px; font-size:0.8rem; opacity:0.7;"></p>
+                      <p id="hint-burst-filter" class="hint-text" style="margin-top:3px; font-size:0.8rem; opacity:0.7;"></p>
                   </div>
                   <div class="setting-group">
                       <label>AI_TOPIC_COUNT (MAX 5)</label>
@@ -230,7 +230,7 @@
                           <input type="number" id="cfg-refresh-days" value="30" min="1" max="365">
                           <span class="hint-text">DAYS OLD</span>
                       </div>
-                      <p class="hint-text" style="margin-top:5px; font-size:0.8rem; opacity:0.7;">* 설정한 기간 이상 지난 글을 갱신합니다.</p>
+                      <p id="hint-refresh-days" class="hint-text" style="margin-top:5px; font-size:0.8rem; opacity:0.7;"></p>
                   </div>
               </div>
               <div id="tab-prompts" class="tab-content hidden">

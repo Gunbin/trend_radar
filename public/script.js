@@ -19,6 +19,35 @@ let APP_CONFIG = {
     region: 'KR'
 };
 
+function syncDocumentLang() {
+    const lang = APP_CONFIG.region === 'US' ? 'en' : 'ko';
+    document.documentElement.lang = lang;
+}
+
+/** 설정 모달 힌트 문구 — REGION에 맞게 KR/EN 전환 */
+function updateSettingsHintsForRegion() {
+    const us = APP_CONFIG.region === 'US';
+    const set = (id, kr, en) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = us ? en : kr;
+    };
+    set(
+        'hint-use-search',
+        '* ENABLE_GOOGLE_SEARCH: 최신 팩트체크를 수행하지만 API 쿼터 소진이 빠를 수 있습니다.',
+        '* ENABLE_GOOGLE_SEARCH: Runs fresh fact-checking; consumes API quota faster.'
+    );
+    set(
+        'hint-burst-filter',
+        '* ENABLE_BURST_HARD_FILTER: Burst 주제를 분석 단계에서 자동 review로 강등합니다. (기본 ON)',
+        '* ENABLE_BURST_HARD_FILTER: Burst topics are demoted to review during analysis. (default ON)'
+    );
+    set(
+        'hint-refresh-days',
+        '* 설정한 기간 이상 지난 글을 갱신합니다.',
+        '* Refreshes posts older than the configured number of days.'
+    );
+}
+
 // Load settings from localStorage
 function loadSettings() {
     const saved = localStorage.getItem('trendRadar_cfg');
@@ -97,7 +126,9 @@ function syncUIToSettings() {
     
     updateIntervalHint(APP_CONFIG.interval / 1000);
     document.getElementById('topics-val').textContent = `${APP_CONFIG.topicCount} TOPICS`;
-    
+    syncDocumentLang();
+    updateSettingsHintsForRegion();
+
     updatePanelVisibility();
 }
 
@@ -418,7 +449,7 @@ async function fetchTrends() {
                 <div class="keyword">${item.keyword}</div>
                 <div class="meta">
                   <span style="color:#ff5555">> SCAM ALERT / SCORE: ${item.score}</span><br>
-                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] 상세보기</a>
+                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] View Post</a>
                 </div>
               </div>
             </div>
@@ -433,7 +464,7 @@ async function fetchTrends() {
                 <div class="keyword">${item.keyword}</div>
                 <div class="meta">
                   <span style="color:#55ff55">> WELFARE INFO / SCORE: ${item.score}</span><br>
-                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] 상세보기</a>
+                  <a href="${item.url}" target="_blank" class="news-item">[${item.subreddit}] View Post</a>
                 </div>
               </div>
             </div>
@@ -463,7 +494,7 @@ async function fetchTrends() {
                 <div class="keyword">${item.keyword}</div>
                 <div class="meta">
                   <span style="color:var(--neon-color)">> VIRAL TREND</span><br>
-                  <a href="${item.url}" target="_blank" class="news-item">바로가기</a>
+                  <a href="${item.url}" target="_blank" class="news-item">Open</a>
                 </div>
               </div>
             </div>
@@ -676,12 +707,20 @@ document.getElementById('close-ai').addEventListener('click', () => {
 // [v2.7] priority 기반 정렬 순서 (primary → secondary → review)
 const PRIORITY_RANK = { primary: 1, secondary: 2, review: 3 };
 
-// [v2.7] priority 뱃지 메타 (라벨 + 아이콘)
-const PRIORITY_META = {
-    primary:   { label: 'PRIMARY',   icon: '■', title: 'SEO 생존점수 우수(seoViability≥8) 등 — 서버 annotate 기준 메인 후보' },
-    secondary: { label: 'SECONDARY', icon: '▲', title: '생존점수 보통(5~7) 또는 경쟁 과열(competitionIndex>3) 시 보조 후보' },
+// [v2.7] priority 뱃지 — REGION별 임계값 안내 (서버 annotate와 맞춤)
+const PRIORITY_META_KR = {
+    primary:   { label: 'PRIMARY',   icon: '■', title: 'SEO 생존점수 우수 (seoViability≥8) — 서버 기준 메인 후보' },
+    secondary: { label: 'SECONDARY', icon: '▲', title: '생존점수 보통 (≥5) 또는 경쟁 과열(competitionIndex>3) 시 보조 후보' },
     review:    { label: 'REVIEW',    icon: '?', title: '검색량 0·Burst·painScore 누락/약함·과열+저점수 등 재검토' }
 };
+const PRIORITY_META_US = {
+    primary:   { label: 'PRIMARY',   icon: '■', title: 'Strong viability (seoViability≥4 on Google Suggest path) — main pick' },
+    secondary: { label: 'SECONDARY', icon: '▲', title: 'Moderate (≥2) or high competition (>4.5) with rescue score — secondary' },
+    review:    { label: 'REVIEW',    icon: '?', title: 'searchVolume 0, Burst, weak pain, or hot competition + low score — recheck' }
+};
+function getPriorityMeta(region) {
+    return region === 'US' ? PRIORITY_META_US : PRIORITY_META_KR;
+}
 
 // HTML 이스케이프 (문자열 값 삽입 안전용)
 function esc(s) {
@@ -691,8 +730,10 @@ function esc(s) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function isBlueOceanIndex(ci) {
-    return typeof ci === 'number' && ci < 0.5;
+function isBlueOceanIndex(ci, region) {
+    if (typeof ci !== 'number') return false;
+    const th = region === 'US' ? 0.6 : 0.5;
+    return ci < th;
 }
 
 function formatCompetitionIndex(ci) {
@@ -701,22 +742,35 @@ function formatCompetitionIndex(ci) {
 
 function renderAIAnalysis(data) {
     const aiContent = document.getElementById('ai-content');
+    const region = APP_CONFIG.region || 'KR';
+    const isUS = region === 'US';
+    const pMeta = getPriorityMeta(region);
 
     // [v3.1] Checked Keywords Pool Table 렌더링
     let poolHtml = '';
     if (data._keywordPool && Object.keys(data._keywordPool).length > 0) {
-        let poolRows = Object.entries(data._keywordPool).map(([kw, d]) => `
+        let poolRows = Object.entries(data._keywordPool).map(([kw, d]) => {
+            const docCell =
+                d.documentCount != null && typeof d.documentCount === 'number'
+                    ? d.documentCount.toLocaleString()
+                    : 'N/A';
+            const volCell =
+                typeof d.searchVolume === 'number' ? d.searchVolume.toLocaleString() : 'N/A';
+            return `
             <tr>
                 <td>${esc(kw)}</td>
-                <td>${d.searchVolume.toLocaleString()}</td>
-                <td>${d.documentCount.toLocaleString()}</td>
-                <td class="${isBlueOceanIndex(d.competitionIndex) ? 'blue-ocean-text' : ''}">${formatCompetitionIndex(d.competitionIndex)}</td>
-            </tr>
-        `).join('');
-        
+                <td>${volCell}</td>
+                <td>${docCell}</td>
+                <td class="${isBlueOceanIndex(d.competitionIndex, region) ? 'blue-ocean-text' : ''}">${formatCompetitionIndex(d.competitionIndex)}</td>
+            </tr>`;
+        }).join('');
+        const poolTitle = isUS
+            ? '📊 Checked Keywords Pool (Google Suggest — demand proxy)'
+            : '📊 Checked Keywords Pool (Real-time Naver Metrics)';
+
         poolHtml = `
             <div class="pool-section">
-                <div class="pool-title">📊 Checked Keywords Pool (Real-time Naver Metrics)</div>
+                <div class="pool-title">${poolTitle}</div>
                 <div class="pool-table-wrapper">
                     <table class="pool-table">
                         <thead>
@@ -759,14 +813,14 @@ function renderAIAnalysis(data) {
         <div class="priority-stats-bar">
             <div class="stats-left">
                 <span class="stats-label">QUALITY_DISTRIBUTION:</span>
-                <span class="stat-chip chip-primary" title="${esc(PRIORITY_META.primary.title)}">
-                    ${PRIORITY_META.primary.icon} PRIMARY ${counts.primary}
+                <span class="stat-chip chip-primary" title="${esc(pMeta.primary.title)}">
+                    ${pMeta.primary.icon} PRIMARY ${counts.primary}
                 </span>
-                <span class="stat-chip chip-secondary" title="${esc(PRIORITY_META.secondary.title)}">
-                    ${PRIORITY_META.secondary.icon} SECONDARY ${counts.secondary}
+                <span class="stat-chip chip-secondary" title="${esc(pMeta.secondary.title)}">
+                    ${pMeta.secondary.icon} SECONDARY ${counts.secondary}
                 </span>
-                <span class="stat-chip chip-review" title="${esc(PRIORITY_META.review.title)}">
-                    ${PRIORITY_META.review.icon} REVIEW ${counts.review}
+                <span class="stat-chip chip-review" title="${esc(pMeta.review.title)}">
+                    ${pMeta.review.icon} REVIEW ${counts.review}
                 </span>
                 ${counts.unknown ? `<span class="stat-chip chip-unknown">? LEGACY ${counts.unknown}</span>` : ''}
             </div>
@@ -786,15 +840,34 @@ function renderAIAnalysis(data) {
 
         // [v2.7] priority 뱃지
         const priority = post._meta?.priority || 'unknown';
-        const meta = PRIORITY_META[priority];
+        const meta = pMeta[priority];
+        const legacyTitle = isUS
+            ? 'Legacy response — priority metadata missing'
+            : 'legacy 응답 — painScore 필드 없음';
         const badgeHtml = meta
             ? `<span class="priority-badge badge-${priority}" title="${esc(meta.title)}">${meta.icon} ${meta.label}</span>`
-            : `<span class="priority-badge badge-unknown" title="legacy 응답 — painScore 필드 없음">? LEGACY</span>`;
+            : `<span class="priority-badge badge-unknown" title="${esc(legacyTitle)}">? LEGACY</span>`;
             // [v2.7] painScore
         const painScore = Number.isFinite(post.painScore) ? post.painScore : null;
+        const painTitle = isUS
+            ? 'Pain composite (urgency × severity × impact), scale 3–15'
+            : '심각성+시급성+타격 합산 (3~15)';
         const painBadge = painScore !== null
-            ? `<span class="metric-chip" title="심각성+시급성+타격 합산 (3~15)">PAIN: <strong>${painScore}</strong>/15</span>`
+            ? `<span class="metric-chip" title="${esc(painTitle)}">PAIN: <strong>${painScore}</strong>/15</span>`
             : '';
+
+        const suggestProxy = post._metricsSource === 'google_suggest';
+        const searchTooltip =
+            suggestProxy && typeof post._demandScore === 'number'
+                ? ` title="${esc(`Suggest demand proxy (not monthly search volume); demandScore ${post._demandScore}/5`)}"`
+                : '';
+        const docDisplay =
+            post.documentCount != null && typeof post.documentCount === 'number'
+                ? post.documentCount.toLocaleString()
+                : 'N/A';
+        const compTitle = isUS
+            ? 'Suggest competition index (~0–5). Blue-ocean styling if below 0.6 (US path).'
+            : '경쟁 지수 — 0.5 미만 블루오션, 값이 없으면 "-"';
 
         // [v3.1] Metrics Badge Row (TARGET_KW 추가)
         const metricsHtml = (post.searchVolume !== undefined)
@@ -803,15 +876,15 @@ function renderAIAnalysis(data) {
                     <span class="m-label">TARGET_KW:</span>
                     <span class="m-value" style="color:var(--namu-color)">${esc(post.targetKeyword || 'N/A')}</span>
                 </div>
-                <div class="metric-item">
+                <div class="metric-item"${searchTooltip}>
                     <span class="m-label">SEARCH:</span>
-                    <span class="m-value">${post.searchVolume.toLocaleString()}</span>
+                    <span class="m-value">${Number(post.searchVolume).toLocaleString()}</span>
                 </div>
                 <div class="metric-item">
                     <span class="m-label">DOCS:</span>
-                    <span class="m-value">${(post.documentCount || 0).toLocaleString()}</span>
+                    <span class="m-value">${docDisplay}</span>
                 </div>
-                <div class="metric-item ${isBlueOceanIndex(post.competitionIndex) ? 'blue-ocean' : ''}" title="경쟁 지수 — 0.5 미만 블루오션, 값이 없으면 '-'">
+                <div class="metric-item ${isBlueOceanIndex(post.competitionIndex, region) ? 'blue-ocean' : ''}" title="${esc(compTitle)}">
                     <span class="m-label">COMP:</span>
                     <span class="m-value">${formatCompetitionIndex(post.competitionIndex)}</span>
                 </div>
@@ -855,7 +928,7 @@ function renderAIAnalysis(data) {
                     ${post.lsiKeywords ? `<div class="meta-item"><span>LSI_KEYWORDS:</span> ${(Array.isArray(post.lsiKeywords) ? post.lsiKeywords : []).map(esc).join(', ')}</div>` : ''}
                     <div class="meta-item"><span>NEWS_MAIN:</span> ${esc(post.searchQueries?.news_main || post.searchQueries?.news || post.newsSearchQuery || 'N/A')}</div>
                     <div class="meta-item"><span>NEWS_SUB:</span> ${esc(post.searchQueries?.news_sub || 'N/A')}</div>
-                    <div class="meta-item"${APP_CONFIG.region === 'US' ? ' title="US 포스팅은 뉴스 API만으로 팩트를 보강합니다. Kin 키워드는 스키마·기획 참고용입니다."' : ''}><span>KIN_QUERY:</span> ${esc(post.searchQueries?.kin || 'N/A')}</div>
+                    <div class="meta-item"${isUS ? ` title="${esc('News API enriches facts; kin is the Reddit/Q&A discovery hint.')}"` : ''}><span>KIN_QUERY:</span> ${esc(post.searchQueries?.kin || 'N/A')}</div>
                     <div class="meta-item"><span>CORE_MESSAGE:</span> ${esc(post.coreMessage)}</div>
                     ${sourceUrlsHtml}
                 </div>
@@ -1103,9 +1176,10 @@ function updateIntervalHint(sec) {
 }
 
 function updateItemScaleHint(scale) {
-    let label = '표준';
-    if (scale <= 0.5) label = '적게';
-    else if (scale >= 1.5) label = '많게';
+    const us = APP_CONFIG.region === 'US';
+    let label = us ? 'Standard' : '표준';
+    if (scale <= 0.5) label = us ? 'Fewer' : '적게';
+    else if (scale >= 1.5) label = us ? 'More' : '많게';
     document.getElementById('item-scale-val').textContent = `${label} (${scale.toFixed(1)}x)`;
 }
 

@@ -181,7 +181,17 @@ function calcSeoViabilityScore(searchVolume, competitionIndex, documentCount) {
 function annotateAnalysisPriority(analysisResult, options = {}) {
     if (!analysisResult || !Array.isArray(analysisResult.blogPosts)) return analysisResult;
     const lang = options.lang || 'ko';
+    const txt = (ko, en) => (lang === 'en' ? en : ko);
+    const metricsSource = options.metricsSource || 'naver';
+    let PRIMARY_THRESHOLD = 8;
+    let SECONDARY_THRESHOLD = 5;
+    if (lang === 'en' && metricsSource === 'google_suggest') {
+        PRIMARY_THRESHOLD = 4;
+        SECONDARY_THRESHOLD = 2;
+    }
     const COMPETITION_HARD_LIMIT = lang === 'en' ? 4.5 : 3.0;
+    const REDOCEAN_RESCUE =
+        lang === 'en' && metricsSource === 'google_suggest' ? 3 : 7;
     const burstHardFilterEnabled = options?.burstHardFilterEnabled !== false;
 
     for (const post of analysisResult.blogPosts) {
@@ -197,34 +207,58 @@ function annotateAnalysisPriority(analysisResult, options = {}) {
 
         if (sv === 0) {
             priority = 'review';
-            reason = '⚠️ 검색량 0 — 가짜 0(Fake Zero)일 수 있으나 검토 요망';
+            reason = txt(
+                '⚠️ 검색량 0 — 가짜 0(Fake Zero)일 수 있으나 검토 요망',
+                '⚠️ searchVolume 0 — possible fake-zero niche demand; needs review'
+            );
             logger.warn(`[Analysis] ⚠ "${post.mainKeyword || '(no keyword)'}" — searchVolume=0`);
         } else if (burstHardFilterEnabled && post.trafficStrategy?.lifecycle === 'Burst') {
             priority = 'review';
-            reason = '🚫 Burst — 신생 블로그 노출 지연으로 자동 제외';
+            reason = txt(
+                '🚫 Burst — 신생 블로그 노출 지연으로 자동 제외',
+                '🚫 Burst lifecycle — down-ranked for new-blog visibility lag'
+            );
         } else if (painScore === null) {
             priority = 'review';
-            reason = 'painScore 누락';
+            reason = txt('painScore 누락', 'painScore missing');
         } else if (compIdx !== null && compIdx > COMPETITION_HARD_LIMIT) {
-            if (seoViabilityScore >= 7) {
+            if (seoViabilityScore >= REDOCEAN_RESCUE) {
                 priority = 'secondary';
-                reason = `⚠️ 경쟁 과열 선행 차단 (competitionIndex ${compIdx})`;
+                reason = txt(
+                    `⚠️ 경쟁 과열 선행 차단 (competitionIndex ${compIdx})`,
+                    `⚠️ Very high competition — capped as secondary (competitionIndex ${compIdx})`
+                );
             } else {
                 priority = 'review';
-                reason = `⚠️ 경쟁 과열 선행 차단 + 생존점수 낮음 (competitionIndex ${compIdx})`;
+                reason = txt(
+                    `⚠️ 경쟁 과열 선행 차단 + 생존점수 낮음 (competitionIndex ${compIdx})`,
+                    `⚠️ Very high competition + low viability (competitionIndex ${compIdx})`
+                );
             }
-        } else if (seoViabilityScore >= 8) {
+        } else if (seoViabilityScore >= PRIMARY_THRESHOLD) {
             priority = 'primary';
-            reason = `✅ SEO 생존 점수 우수 (seoViabilityScore ${seoViabilityScore})`;
-        } else if (seoViabilityScore >= 5) {
+            reason = txt(
+                `✅ SEO 생존 점수 우수 (seoViabilityScore ${seoViabilityScore})`,
+                `✅ Strong SEO viability score (${seoViabilityScore})`
+            );
+        } else if (seoViabilityScore >= SECONDARY_THRESHOLD) {
             priority = 'secondary';
-            reason = `ℹ️ SEO 생존 점수 보통 (seoViabilityScore ${seoViabilityScore})`;
+            reason = txt(
+                `ℹ️ SEO 생존 점수 보통 (seoViabilityScore ${seoViabilityScore})`,
+                `ℹ️ Moderate SEO viability score (${seoViabilityScore})`
+            );
         } else if ((painScore ?? 0) < 6) {
             priority = 'review';
-            reason = `painScore=${painScore} — 페인 약함`;
+            reason = txt(
+                `painScore=${painScore} — 페인 약함`,
+                `painScore=${painScore} — weak pain signal`
+            );
         } else {
             priority = 'review';
-            reason = `seoViabilityScore=${seoViabilityScore} — 유입 잠재력 낮음`;
+            reason = txt(
+                `seoViabilityScore=${seoViabilityScore} — 유입 잠재력 낮음`,
+                `seoViabilityScore=${seoViabilityScore} — limited traffic potential`
+            );
         }
 
         post._meta = {
@@ -1239,7 +1273,12 @@ function formatMetricsLine(kw, data, lang = 'ko') {
   const suggestions = (data.suggestions || []).join(', ') || (lang === 'en' ? 'none' : '없음');
   const docCount = data.documentCount !== null ? data.documentCount : 'N/A (not provided)';
   if (lang === 'en') {
-    return `- keyword: ${kw} / searchVolume: ${data.searchVolume} / documentCount: ${docCount} / competitionIndex: ${data.competitionIndex ?? 'N/A'} / competitionLabel: ${data.competitionLabel || '⚪ Unmeasurable'} / relatedQueries(reference): ${suggestions}`;
+    const svDisplay =
+      data._source === 'google_suggest'
+        ? `${data.searchVolume} (suggest-proxy, demandScore=${data._demandScore ?? '?'}/5)`
+        : `${data.searchVolume}`;
+    const docDisplay = data.documentCount !== null ? data.documentCount : 'N/A';
+    return `- keyword: ${kw} / searchVolume: ${svDisplay} / documentCount: ${docDisplay} / competitionIndex: ${data.competitionIndex ?? 'N/A'} / competitionLabel: ${data.competitionLabel || '⚪ Unmeasurable'} / relatedQueries(reference): ${suggestions}`;
   }
   return `- 키워드: ${kw} / 월간검색량: ${data.searchVolume} / 발행문서수: ${data.documentCount} / 경쟁지수: ${data.competitionIndex} / 경쟁강도: ${data.competitionLabel || '⚪ 측정불가'} / 연관검색어(참고): ${suggestions}`;
 }
@@ -2008,136 +2047,6 @@ async function getNaverKeywordMetrics(keywords, lang = 'ko', country = 'KR') {
     return originalMetrics;
 }
 
-function calcCpcWeight(lowBid, highBid) {
-    const avg = ((lowBid || 0) + (highBid || 0)) / 2;
-    if (avg <= 0)  return 1.0;
-    if (avg <= 1)  return 1.0;
-    if (avg <= 3)  return 1.2;
-    if (avg <= 8)  return 1.5;
-    return 2.0;
-}
-
-function buildEnCompetitionIndex(competition, lowBid, highBid) {
-    const COMP_BASE = { LOW: 0.3, MEDIUM: 1.2, HIGH: 3.8, UNSPECIFIED: null };
-    const base = COMP_BASE[competition];
-    if (base === null || base === undefined) return null;
-    return parseFloat((base * calcCpcWeight(lowBid, highBid)).toFixed(2));
-}
-
-function attachCompetitionLabelEN(metric) {
-    const ci = metric.competitionIndex;
-    if (ci === null || ci === undefined) {
-        metric.competitionLabel = '⚪ Unmeasurable';
-    } else if (ci < 0.6) {
-        metric.competitionLabel = '🟢 Blue Ocean';
-    } else if (ci < 2.5) {
-        metric.competitionLabel = '🟡 Moderate';
-    } else {
-        metric.competitionLabel = '🔴 Red Ocean';
-    }
-    return metric;
-}
-
-// [EN] Google Ads Keyword Planner API 기반 검색량/경쟁도 조회
-async function getGoogleAdsKeywordMetrics(keywords, lang = 'en', country = 'US') {
-    const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
-    const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-    const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
-    const customerId   = process.env.GOOGLE_ADS_CUSTOMER_ID;
-    const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
-
-    if (!clientId || !clientSecret || !devToken || !refreshToken || !customerId) {
-        logger.warn('[Metrics-EN] Google Ads API keys missing. Returning empty metrics.');
-        return {};
-    }
-
-    const GEO_TARGET_MAP = { 'US': '2840', 'GB': '2826', 'AU': '2036', 'CA': '2124' };
-    const LANGUAGE_MAP = { 'en': '1000' };
-    const geoTargetId = GEO_TARGET_MAP[country] || GEO_TARGET_MAP['US'];
-    const languageId  = LANGUAGE_MAP[lang]      || LANGUAGE_MAP['en'];
-
-    const VOLUME_RANGE_MAP = {
-        'UNSPECIFIED':        0, 'UNKNOWN':            0, 'ZERO':               0,
-        'VERY_LOW':           5, 'LOW':                50, 'LOW_MEDIUM':         500,
-        'MEDIUM':             5000, 'MEDIUM_HIGH':        50000, 'HIGH':               500000,
-        'VERY_HIGH':          1500000
-    };
-
-    try {
-        const { GoogleAdsApi } = await import('google-ads-api');
-        
-        const client = new GoogleAdsApi({
-            client_id:     clientId,
-            client_secret: clientSecret,
-            developer_token: devToken
-        });
-
-        const customerOptions = {
-            customer_id:   customerId,
-            refresh_token: refreshToken
-        };
-        
-        if (loginCustomerId) {
-            customerOptions.login_customer_id = loginCustomerId;
-        }
-
-        const customer = client.Customer(customerOptions);
-
-        const results = await customer.keywordPlanIdeas.generateKeywordIdeas({
-            customer_id: customerId,
-            language:    `languageConstants/${languageId}`,
-            geo_target_constants: [`geoTargetConstants/${geoTargetId}`],
-            keyword_seed: { keywords }
-        });
-
-        const metrics = {};
-
-        for (const idea of results) {
-            const kw  = idea.text;
-            const m   = idea.keyword_idea_metrics;
-
-            if (!kw || !m) continue;
-
-            const volumeEnum = m.avg_monthly_searches_range?.min_avg_monthly_searches || 'UNKNOWN';
-            const volumeNum  = VOLUME_RANGE_MAP[volumeEnum] ?? 0;
-            const exactVolume = typeof m.avg_monthly_searches === 'number' ? m.avg_monthly_searches : null;
-            const finalVolume = exactVolume ?? volumeNum;
-
-            const compEnum   = m.competition || 'UNKNOWN';
-            const lowBid  = m.low_top_of_page_bid_micros  ? m.low_top_of_page_bid_micros  / 1_000_000 : 0;
-            const highBid = m.high_top_of_page_bid_micros ? m.high_top_of_page_bid_micros / 1_000_000 : 0;
-            const compIndex = buildEnCompetitionIndex(compEnum, lowBid, highBid);
-
-            metrics[kw] = {
-                searchVolume:     finalVolume,
-                documentCount:    null,
-                competitionIndex: compIndex,
-                competitionLabel: attachCompetitionLabelEN({ competitionIndex: compIndex }).competitionLabel,
-                _source:          'google_ads',
-                _volumeRaw:       volumeEnum,
-                _competitionRaw:  compEnum,
-                _cpcAvg:          (lowBid + highBid) / 2
-            };
-        }
-
-        const topKeywords = keywords.slice(0, 5);
-        await Promise.all(topKeywords.map(async (kw) => {
-            if (!metrics[kw]) metrics[kw] = {
-                searchVolume: 0, documentCount: null,
-                competitionIndex: null, competitionLabel: '⚪ Unmeasurable'
-            };
-            metrics[kw].suggestions = await getGoogleSuggestions(kw, lang, country);
-        }));
-
-        logger.success(`[Metrics-EN] Google Ads Keyword Planner 완료: ${Object.keys(metrics).length}건`);
-        return metrics;
-    } catch (e) {
-        logger.error('[Metrics-EN] Google Ads API 오류:', e.message);
-        return {};
-    }
-}
-
 // [v3.0] 모델 출력의 searchVolume/documentCount/competitionIndex는 신뢰하지 않고,
 //        서버에서 수집한 실측 metrics로 덮어쓴다(운영 안정성: SEARCH==DOCS 같은 패턴 방지).
 function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
@@ -2160,6 +2069,10 @@ function applyMeasuredMetricsToAnalysis(analysisJson, measuredMetrics) {
         post.searchVolume = sv;
         post.documentCount = dc;
         post.competitionIndex = ci;
+        if (typeof m._demandScore === 'number') post._demandScore = m._demandScore;
+        else delete post._demandScore;
+        if (m._source) post._metricsSource = m._source;
+        else delete post._metricsSource;
     }
 
     // 길이/개수 보정 (프롬프트 지시 불이행 대비)
@@ -2215,6 +2128,84 @@ async function getGoogleSuggestions(keyword, lang = 'ko', country = 'KR') {
   } catch (_e) {
     return [];
   }
+}
+
+// [EN] Google Suggest 기반 경쟁도/수요 추정 metrics (API 키 불필요)
+async function getGoogleSuggestMetrics(keywords, lang = 'en', country = 'US') {
+    const DEMAND_TO_SV = { 0: 0, 1: 100, 2: 500, 3: 2000, 4: 8000, 5: 20000 };
+
+    const STOPWORDS = new Set([
+        'a', 'an', 'the', 'and', 'or', 'for', 'in', 'on', 'of', 'to', 'is', 'it', 'at', 'by', 'as', 'with',
+        'how', 'what', 'why', 'when', 'are', 'was', 'be', 'do', 'does', 'get', 'can', 'will', 'has', 'have'
+    ]);
+
+    function coreTokens(str) {
+        return str
+            .toLowerCase()
+            .replace(/[^a-z0-9 ]/g, ' ')
+            .split(/\s+/)
+            .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+    }
+
+    function calcCompetitionIndex(keyword, suggestions) {
+        if (!suggestions || suggestions.length === 0) return null;
+
+        const srcTokens = new Set(coreTokens(keyword));
+        if (srcTokens.size === 0) return null;
+
+        const overlapCount = suggestions.filter((sug) => {
+            const sugTokens = coreTokens(sug);
+            const shared = sugTokens.filter((t) => srcTokens.has(t)).length;
+            return shared >= Math.min(2, srcTokens.size);
+        }).length;
+
+        const tokenOverlapRate = overlapCount / suggestions.length;
+        const divergenceScore = 1 - tokenOverlapRate;
+
+        const hasPainSignal = suggestions.some((s) =>
+            /\b(not|without|failed|denied|error|wrong|stuck|issue|problem|why|can'?t|won'?t|doesn'?t)\b/i.test(s)
+        );
+        const finalDivergence = Math.min(1, divergenceScore + (hasPainSignal ? 0.2 : 0));
+
+        return parseFloat(((1 - finalDivergence) * 5.0).toFixed(2));
+    }
+
+    function attachLabel(ci) {
+        if (ci === null || ci === undefined) return '⚪ Unmeasurable';
+        if (ci < 0.6) return '🟢 Blue Ocean';
+        if (ci < 2.5) return '🟡 Moderate';
+        return '🔴 Red Ocean';
+    }
+
+    const metrics = {};
+    const BATCH = 5;
+
+    for (let i = 0; i < keywords.length; i += BATCH) {
+        const batch = keywords.slice(i, i + BATCH);
+        await Promise.all(
+            batch.map(async (kw) => {
+                const suggestions = await getGoogleSuggestions(kw, lang, country);
+                const demandScore = suggestions.length;
+                const sv = DEMAND_TO_SV[demandScore] ?? 0;
+                const ci = calcCompetitionIndex(kw, suggestions);
+
+                metrics[kw] = {
+                    searchVolume: sv,
+                    documentCount: null,
+                    competitionIndex: ci,
+                    competitionLabel: attachLabel(ci),
+                    suggestions,
+                    _source: 'google_suggest',
+                    _demandScore: demandScore
+                };
+            })
+        );
+
+        if (i + BATCH < keywords.length) await new Promise((r) => setTimeout(r, 300));
+    }
+
+    logger.success(`[Metrics-EN] Google Suggest metrics 완료: ${Object.keys(metrics).length}건`);
+    return metrics;
 }
 
 // [Step 1] Lite 모델을 이용한 검색 키워드 추출
@@ -2280,7 +2271,7 @@ async function buildAnalysisPromptInput({ trends, manualText, config, region = '
         const suggestLang = region === 'US' ? 'en' : 'ko';
         const suggestCountry = region === 'US' ? 'US' : 'KR';
         if (region === 'US') {
-            measuredMetrics = await getGoogleAdsKeywordMetrics(searchTerms, suggestLang, suggestCountry);
+            measuredMetrics = await getGoogleSuggestMetrics(searchTerms, suggestLang, suggestCountry);
         } else {
             measuredMetrics = await getNaverKeywordMetrics(searchTerms, suggestLang, suggestCountry);
         }
@@ -2578,7 +2569,8 @@ app.post('/api/analyze', async (req, res) => {
         }
         const analysisJson = annotateAnalysisPriority(patched, {
             burstHardFilterEnabled: config?.burstHardFilterEnabled !== false,
-            lang
+            lang,
+            metricsSource: region === 'US' ? 'google_suggest' : 'naver'
         });
         const PRIORITY_ORDER = { primary: 0, secondary: 1, review: 2 };
         if (Array.isArray(analysisJson.blogPosts)) {
@@ -2843,6 +2835,8 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             postPlan.targetKeyword ||
             postPlan.mainKeyword;
         const queryKin = (typeof sq.kin === 'string' && sq.kin.trim()) || postPlan.mainKeyword;
+        const fallbackBase = String(postPlan.targetKeyword || postPlan.mainKeyword || '').trim();
+        const shortNewsKeyword = fallbackBase.split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
 
         let newsMainResults = [];
         let newsSubResults = [];
@@ -2852,12 +2846,20 @@ async function enrichPostPlan(postPlan, region = 'KR') {
 
         if (region === 'US') {
             newsMainResults = await searchNewsAPI(queryMain);
-            if (newsMainResults.length === 0) newsMainResults = await searchNewsAPI(postPlan.mainKeyword);
+            if (newsMainResults.length === 0 && querySub && querySub !== queryMain) {
+                newsMainResults = await searchNewsAPI(querySub);
+            }
+            if (newsMainResults.length === 0 && shortNewsKeyword) {
+                newsMainResults = await searchNewsAPI(shortNewsKeyword);
+            }
 
             await sleep(500);
             newsSubResults = await searchNewsAPI(querySub);
             if (newsSubResults.length === 0 && querySub !== postPlan.mainKeyword) {
                 newsSubResults = await searchNewsAPI(postPlan.mainKeyword);
+            }
+            if (newsSubResults.length === 0 && shortNewsKeyword) {
+                newsSubResults = await searchNewsAPI(shortNewsKeyword);
             }
 
             await sleep(500);

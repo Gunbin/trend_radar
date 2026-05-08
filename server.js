@@ -701,6 +701,38 @@ function normalizeDiagramShortcodes(markdown) {
     });
 }
 
+/** flowchart/graph: 노드 간 `C -- Yes --> D` 형태를 Mermaid 호환 `-->|Yes|` 로 보정 */
+function fixFlowchartLabeledEdges(text) {
+    return text.replace(
+        /\b([\w\d]+)\s--\s+([^#\[\]\n]+?)\s+-->\s*([\w\d]+)/g,
+        (_m, a, lbl, b) => `${a} -->|${String(lbl).trim()}| ${b}`
+    );
+}
+
+/** 사각 노드 레이블에 < > 가 있으면(예: Arrears < $2500) HTML/파서 오인 방지용으로 따옴표로 감쌈 */
+function fixFlowchartRectLabelsWithAngleBrackets(text) {
+    return text
+        .split('\n')
+        .map((line) => {
+            const t = line.trimStart();
+            if (/^(?:subgraph|end|direction|classDef|click|style|linkStyle)\b/i.test(t)) return line;
+            return line.replace(/^(\s*)([\w\d]+)\[([^\]]+)\]/u, (full, ws, id, lbl) => {
+                const inner = String(lbl);
+                if (/^\s*"/.test(inner.trim())) return full;
+                if (!inner.includes('<') && !inner.includes('>')) return full;
+                return `${ws}${id}["${inner.replace(/"/g, '\\"')}"]`;
+            });
+        })
+        .join('\n');
+}
+
+function normalizeMermaidFlowchartSyntax(body) {
+    if (!/^\s*(flowchart|graph)\b/im.test(body)) return body;
+    let out = fixFlowchartLabeledEdges(body);
+    out = fixFlowchartRectLabelsWithAngleBrackets(out);
+    return out;
+}
+
 // [v2.9] Mermaid sequence 문법 안전화
 // 운영 중 모델 출력 편차로 인한 syntax error를 줄이기 위해
 // sequenceDiagram 블록의 민감 토큰을 보수적으로 정규화한다.
@@ -711,6 +743,10 @@ function sanitizeMermaidBlocks(markdown) {
     return markdown.replace(mermaidBlockRegex, (_full, rawBody) => {
         let body = String(rawBody || '').trim();
         if (!body) return _full;
+
+        if (/^\s*(flowchart|graph)\b/im.test(body)) {
+            body = normalizeMermaidFlowchartSyntax(body);
+        }
 
         if (body.startsWith('sequenceDiagram')) {
             const lines = body.split('\n').map((line) => {
@@ -2320,15 +2356,31 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
     let normalizedContentDepth = rawContentDepth === 'Bite-sized' ? 'Snack' : rawContentDepth;
 
     const efForDepth = postPlan.enrichedFacts || {};
-    const totalFacts =
-        (Array.isArray(efForDepth.newsMain) ? efForDepth.newsMain.length : 0) +
-        (Array.isArray(efForDepth.newsSub) ? efForDepth.newsSub.length : 0) +
-        (Array.isArray(efForDepth.kin) ? efForDepth.kin.length : 0);
-    if (totalFacts >= 5 && normalizedContentDepth === 'Snack') {
+    const newsMainWeight = (Array.isArray(efForDepth.newsMain) ? efForDepth.newsMain : [])
+        .reduce((sum, f) => sum + (String(f).length >= 150 ? 2 : 1), 0);
+    const newsSubWeight = (Array.isArray(efForDepth.newsSub) ? efForDepth.newsSub : [])
+        .reduce((sum, f) => sum + (String(f).length >= 150 ? 2 : 1), 0);
+    const kinWeight = (Array.isArray(efForDepth.kin) ? efForDepth.kin.length : 0);
+    const weightedFacts = newsMainWeight + newsSubWeight + kinWeight;
+
+    // 가중치 기반 동적 조정: 데이터가 충분하면 승급, 빈약하면 과도한 장문 강제 방지
+    if (weightedFacts >= 6) {
+        normalizedContentDepth = 'Deep-Dive';
+        postPlan.contentDepth = 'Deep-Dive';
+        logger.info(`[Post Gen] 팩트 가중치 ${weightedFacts}점 → ContentDepth 'Deep-Dive' 강제 승급`);
+    } else if (weightedFacts >= 3 && normalizedContentDepth === 'Snack') {
         normalizedContentDepth = 'Normal';
         postPlan.contentDepth = 'Normal';
-        logger.info(`[Post Gen] 팩트 ${totalFacts}건 확보 → ContentDepth 'Snack'에서 'Normal'로 자동 업그레이드`);
+        logger.info(`[Post Gen] 팩트 가중치 ${weightedFacts}점 → ContentDepth 'Snack'에서 'Normal' 승급`);
+    } else if (weightedFacts <= 2 && normalizedContentDepth === 'Deep-Dive') {
+        normalizedContentDepth = 'Normal';
+        postPlan.contentDepth = 'Normal';
+        logger.warn(`[Post Gen] 팩트 가중치 ${weightedFacts}점 — 데이터 빈약으로 'Deep-Dive'에서 'Normal' 강등`);
     }
+
+    const labels = lang === 'en'
+        ? { richMain: 'Primary Source', richSub: 'Secondary Source', short: 'Short Source', kin: 'Community Case' }
+        : { richMain: '주요 뉴스 출처', richSub: '보조 뉴스 출처', short: '요약 뉴스', kin: '커뮤니티 사례' };
 
     const prompt = promptManager.getPrompt(promptKey, lang, {
         mainKeyword: postPlan.mainKeyword,
@@ -2359,18 +2411,34 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
                     : Array.isArray(ef.news) && ef.news.length
                       ? ef.news
                       : [];
-            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : noMainNews;
+            return arr.length
+                ? arr
+                    .map((f, i) =>
+                        String(f).length >= 150
+                            ? `[${labels.richMain} ${i + 1}]\n${f}`
+                            : `[${labels.short} ${i + 1}]\n${f}`
+                    )
+                    .join('\n\n')
+                : noMainNews;
         })(),
         newsSub: (() => {
             const noSubNews  = lang === 'en' ? '[No secondary news facts available]' : '[보조 뉴스 팩트 없음]';
             const ef = postPlan.enrichedFacts || {};
             const arr = Array.isArray(ef.newsSub) && ef.newsSub.length ? ef.newsSub : [];
-            return arr.length ? arr.map((f, i) => `${i + 1}. ${f}`).join('\n') : noSubNews;
+            return arr.length
+                ? arr
+                    .map((f, i) =>
+                        String(f).length >= 150
+                            ? `[${labels.richSub} ${i + 1}]\n${f}`
+                            : `[${labels.short} ${i + 1}]\n${f}`
+                    )
+                    .join('\n\n')
+                : noSubNews;
         })(),
         kinPainPoints: (() => {
             const noKin = lang === 'en' ? '[No community Q&A cases collected]' : '[수집된 커뮤니티 실제 사례 없음]';
             return (postPlan.enrichedFacts && Array.isArray(postPlan.enrichedFacts.kin) && postPlan.enrichedFacts.kin.length > 0)
-                ? postPlan.enrichedFacts.kin.map((f, i) => `${i + 1}. ${f}`).join('\n')
+                ? postPlan.enrichedFacts.kin.map((f, i) => `[${labels.kin} ${i + 1}]\n${f}`).join('\n\n')
                 : noKin;
         })(),
         outputFormat: FORMAT_MAP[`${angle}-${normalizedContentDepth}`] || '',
@@ -2379,7 +2447,7 @@ async function buildPostGenerationPromptInput({ rawPostPlan, region = 'KR' }) {
         context_url_3: "IMAGE_PLACEHOLDER_3"
     });
 
-    return { prompt, postPlan, tags, angle, promptKey, lang };
+    return { prompt, postPlan, tags, angle, promptKey, lang, normalizedContentDepth };
 }
 
 // angleType 다양성 보정 (모두 동일한 경우 분산)
@@ -2794,7 +2862,7 @@ async function searchNewsAPI(query) {
             params: {
                 q: query,
                 language: 'en',
-                sortBy: 'publishedAt',
+                sortBy: 'relevancy',
                 pageSize: 5,
                 apiKey: process.env.NEWS_API_KEY
             }
@@ -2837,6 +2905,13 @@ async function enrichPostPlan(postPlan, region = 'KR') {
         const queryKin = (typeof sq.kin === 'string' && sq.kin.trim()) || postPlan.mainKeyword;
         const fallbackBase = String(postPlan.targetKeyword || postPlan.mainKeyword || '').trim();
         const shortNewsKeyword = fallbackBase.split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
+        const shortKwFromMainOnly = String(postPlan.mainKeyword || '')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .join(' ');
+        const normNewsQuery = (q) => String(q || '').trim().toLowerCase();
 
         let newsMainResults = [];
         let newsSubResults = [];
@@ -2852,6 +2927,17 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             if (newsMainResults.length === 0 && shortNewsKeyword) {
                 newsMainResults = await searchNewsAPI(shortNewsKeyword);
             }
+            // targetKeyword와 mainKeyword가 다를 때: 앞쪽에서 쓴 2토큰이 target 기준이라,
+            // mainKeyword 앞 2토큰은 별도 시도(LIHEAP·에너지 보조처럼 롱테일 main일 때 히트율↑)
+            if (newsMainResults.length === 0 && shortKwFromMainOnly) {
+                const nm = normNewsQuery(queryMain);
+                const ns = normNewsQuery(querySub);
+                const nk = normNewsQuery(shortNewsKeyword);
+                const nMain2 = normNewsQuery(shortKwFromMainOnly);
+                if (nMain2 && nMain2 !== nm && nMain2 !== ns && nMain2 !== nk) {
+                    newsMainResults = await searchNewsAPI(shortKwFromMainOnly);
+                }
+            }
 
             await sleep(500);
             newsSubResults = await searchNewsAPI(querySub);
@@ -2860,6 +2946,20 @@ async function enrichPostPlan(postPlan, region = 'KR') {
             }
             if (newsSubResults.length === 0 && shortNewsKeyword) {
                 newsSubResults = await searchNewsAPI(shortNewsKeyword);
+            }
+            if (newsSubResults.length === 0 && shortKwFromMainOnly) {
+                const nSub = normNewsQuery(querySub);
+                const nMk = normNewsQuery(postPlan.mainKeyword);
+                const nk = normNewsQuery(shortNewsKeyword);
+                const nMain2 = normNewsQuery(shortKwFromMainOnly);
+                if (
+                    nMain2 &&
+                    nMain2 !== nSub &&
+                    nMain2 !== nMk &&
+                    nMain2 !== nk
+                ) {
+                    newsSubResults = await searchNewsAPI(shortKwFromMainOnly);
+                }
             }
 
             await sleep(500);
@@ -2930,9 +3030,14 @@ async function enrichPostPlan(postPlan, region = 'KR') {
         }
 
         if (region === 'US') {
-            if (newsMainResults.length === 0 && newsSubResults.length === 0) {
-                logger.warn(`[Enrich] US 뉴스 결과 없음 — keyword: ${postPlan.mainKeyword}`);
+            if (newsMainResults.length === 0 && newsSubResults.length === 0 && kinResults.length === 0) {
+                logger.warn(`[Enrich] US 뉴스·kin 결과 없음 — keyword: ${postPlan.mainKeyword}`);
                 return postPlan;
+            }
+            if (newsMainResults.length === 0 && newsSubResults.length === 0 && kinResults.length > 0) {
+                logger.warn(
+                    `[Enrich] US 뉴스 0건 — NewsAPI 커버리지 밖일 수 있음. kin 보강만 사용 — ${postPlan.mainKeyword}`
+                );
             }
         } else if (newsMainResults.length === 0 && newsSubResults.length === 0 && kinResults.length === 0) {
             logger.warn(`[Enrich] 검색 결과 없음 — keyword: ${postPlan.mainKeyword}`);
@@ -2940,6 +3045,7 @@ async function enrichPostPlan(postPlan, region = 'KR') {
         }
 
         // [v3.2] 뉴스: URL 순차 크롤로 본문 일부 확보 / 지식인: JS·로그인 이슈로 API summary 유지
+        // NewsAPI 오염 방지는 sortBy=relevancy로 정렬 관련성을 확보하고, 필요 시 크롤로 보강(전체 검색 허용)
         const factMain = [];
         for (const r of newsMainResults.slice(0, 2)) {
             const fullText = (r.url ? await scrapeWebText(r.url) : null) || r.summary;
@@ -2985,9 +3091,15 @@ async function enrichPostPlan(postPlan, region = 'KR') {
 app.post('/api/generate-post', async (req, res) => {
   // [v2.6] useSearch 기본값 false (opt-in). 클라이언트에서 명시적으로 true 를 넘길 때만 Grounding 활성화.
   const { postPlan: rawPostPlan, region = 'KR', useSearch = false } = req.body;
-  const { prompt: prebuiltPrompt, postPlan, tags, angle, lang } = await buildPostGenerationPromptInput({ rawPostPlan, region });
+  const { prompt: prebuiltPrompt, postPlan, tags, angle, lang, normalizedContentDepth } = await buildPostGenerationPromptInput({ rawPostPlan, region });
 
   const modelsToTry = await getBestModels();
+  const TOKEN_MAP = {
+      Snack: 2048,
+      Normal: 4096,
+      'Deep-Dive': 8192
+  };
+  const dynamicMaxTokens = TOKEN_MAP[normalizedContentDepth] || 4096;
   
   let lastError = null;
   let bodyMarkdown = '';
@@ -3014,7 +3126,9 @@ app.post('/api/generate-post', async (req, res) => {
           }
       
       try {
-        logger.process(`[Post Gen] [${api.name}] Generating content with ${modelName} (Region: ${region}, Search: ${useSearch})`);
+        logger.process(
+            `[Post Gen] [${api.name}] Generating content with ${modelName} (Region: ${region}, Depth: ${normalizedContentDepth}, Tokens: ${dynamicMaxTokens}, Search: ${useSearch})`
+        );
         
         // [Google Search Grounding] 실시간 검색 도구 활성화 조건
         const supportsTools = !modelName.includes('lite') && !modelName.includes('gemma');
@@ -3025,7 +3139,8 @@ app.post('/api/generate-post', async (req, res) => {
             tools: tools,
             generationConfig: {
                 temperature: 0.75,
-                topP: 0.85
+                topP: 0.85,
+                maxOutputTokens: dynamicMaxTokens
             }
         });
         

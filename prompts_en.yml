@@ -417,6 +417,7 @@ tasks:
       Every post must be a fresh start. Do NOT recycle intro patterns or structures from previous posts. Design a unique architecture for every piece.
       Before designing the structure, ask yourself: "What exact action should the reader take after reading this?"
       If you cannot answer that, do not start drafting.
+      When `{{contentDepth}}` is 'Deep-Dive', target a minimum of **800 words**. Each H3 section must contain at least 3 substantive paragraphs. Do not pad — use the enriched facts provided.
     rules:
       # ── [3-Tier common rules: _shared.post_writing_common_rules] ────────
       - *pw_common_rules
@@ -442,6 +443,7 @@ tasks:
       Write a guide post based on the plan data. Satisfy GEO and Anti-AI tone. Use Hugo Markdown. Every post must be fresh and uniquely structured.
       Before designing the structure, ask yourself: "Can the reader complete the task using only this article?"
       If completion is unlikely, redesign the structure first.
+      When `{{contentDepth}}` is 'Deep-Dive', target a minimum of **800 words**. Each H3 section must contain at least 3 substantive paragraphs. Do not pad — use the enriched facts provided.
     rules:
       # ── [3-Tier common rules: _shared.post_writing_common_rules] ────────
       - *pw_common_rules
@@ -467,6 +469,7 @@ tasks:
       Write a comparison post based on the plan data. Satisfy GEO and Anti-AI tone. Use Hugo Markdown. Every post must have a unique comparison frame.
       Before designing the structure, ask yourself: "Will the reader stop searching after this article?"
       If meaningful uncertainty remains, strengthen the comparison criteria.
+      When `{{contentDepth}}` is 'Deep-Dive', target a minimum of **800 words**. Each H3 section must contain at least 3 substantive paragraphs. Do not pad — use the enriched facts provided.
     rules:
       # ── [3-Tier common rules: _shared.post_writing_common_rules] ────────
       - *pw_common_rules

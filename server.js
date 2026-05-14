@@ -42,13 +42,13 @@ const DEFAULT_ANGLE = 'guide';
 const FORMAT_MAP = {
     'expose-Snack':      '단문 팩트 나열 → 핵심 경고 → 행동지침 1~2개',
     'expose-Normal':     '[참고 방향] 리스크 원인 → 피해 시나리오 → 회피법 → FAQ. 순서 변경/섹션 통합/새 H2 이름 허용.',
-    'expose-Deep-Dive':  '[참고 방향] 배경 → 심층 리스크 분석 → 케이스별 대응 → FAQ. 주제에 맞는 섹션 재구성 권장.',
+    'expose-Deep-Dive':  '[참고 방향] 배경 → 심층 리스크 분석 → 케이스별 대응 → FAQ. 주제에 맞는 섹션 재구성 권장. 각 H3 최소 3문단, 본문 4,000자 이상 목표.',
     'guide-Snack':       '핵심 단계만 번호 목록 3~5개',
     'guide-Normal':      '[참고 방향] 준비물/전제 → 단계 가이드 → 막히는 지점 → FAQ. 단계 수/순서 유동 조정 가능.',
-    'guide-Deep-Dive':   '[참고 방향] 개요 → 상세 단계 → 오류 대처법 → 고급 팁 → FAQ. 완수 가능성 기준으로 구조 설계.',
+    'guide-Deep-Dive':   '[참고 방향] 개요 → 상세 단계 → 오류 대처법 → 고급 팁 → FAQ. 완수 가능성 기준으로 구조 설계. 각 H3 최소 3문단, 본문 4,000자 이상 목표.',
     'compare-Snack':     '비교표 1개 + 한줄 결론',
     'compare-Normal':    '[참고 방향] 평가기준 → 비교표 → 상황별 추천 → FAQ. 비교 기준 수/순서는 주제 맞춤.',
-    'compare-Deep-Dive': '[참고 방향] 평가기준 가중치 → 항목별 비교 → 상황별 결론 → FAQ. 기계적 나열 금지.',
+    'compare-Deep-Dive': '[참고 방향] 평가기준 가중치 → 항목별 비교 → 상황별 결론 → FAQ. 기계적 나열 금지. 각 H3 최소 3문단, 본문 4,000자 이상 목표.',
 };
 
 // === [v2.6] trend_analysis / manual_analysis 공통 응답 스키마 ===
@@ -2710,7 +2710,7 @@ async function searchNaverKin(query) {
 //        2단계: p태그 밀도 분석(부모 노드별 합산 → 최고 밀도 채택)
 //        3단계: 전체 p태그 폴백
 //        4단계: body 전체 폴백 (p태그 미사용 구형 사이트 대응)
-async function scrapeWebText(url, maxLength = 500) {
+async function scrapeWebText(url, maxLength = 2000) {
     if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return null;
 
     try {
@@ -3046,24 +3046,30 @@ async function enrichPostPlan(postPlan, region = 'KR') {
 
         // [v3.2] 뉴스: URL 순차 크롤로 본문 일부 확보 / 지식인: JS·로그인 이슈로 API summary 유지
         // NewsAPI 오염 방지는 sortBy=relevancy로 정렬 관련성을 확보하고, 필요 시 크롤로 보강(전체 검색 허용)
+        // [v3.4] Snack·Bite-sized만 2건. Normal/Deep-Dive 등은 buildPostGenerationPromptInput에서
+        // enrich *이후* weightedFacts≥6일 때 Deep-Dive로 승급하므로, 기획안 depth만 보면 항상 2건으로 끊김.
+        const rawDepth = postPlan.contentDepth || 'Normal';
+        const snackLike = rawDepth === 'Snack' || rawDepth === 'Bite-sized';
+        const factSlot = snackLike ? 2 : 4;
+
         const factMain = [];
-        for (const r of newsMainResults.slice(0, 2)) {
+        for (const r of newsMainResults.slice(0, factSlot)) {
             const fullText = (r.url ? await scrapeWebText(r.url) : null) || r.summary;
             factMain.push(`[메인 뉴스] ${r.title} - ${fullText}`);
             await sleep(300);
         }
 
         const factSub = [];
-        for (const r of newsSubResults.slice(0, 2)) {
+        for (const r of newsSubResults.slice(0, factSlot)) {
             const fullText = (r.url ? await scrapeWebText(r.url) : null) || r.summary;
             factSub.push(`[보조 뉴스] ${r.title} - ${fullText}`);
             await sleep(300);
         }
 
         const kinLabel = (region === 'US') ? '[Real Q&A / Community Case]' : '[실제 고민/사례]';
-        const factKin = kinResults.slice(0, 2).map((r) => `${kinLabel} ${r.title} - ${r.summary}`);
+        const factKin = kinResults.slice(0, factSlot).map((r) => `${kinLabel} ${r.title} - ${r.summary}`);
 
-        const officialUrls = [...newsMainResults.slice(0, 2), ...newsSubResults.slice(0, 2)]
+        const officialUrls = [...newsMainResults.slice(0, factSlot), ...newsSubResults.slice(0, factSlot)]
             .filter((r) => r.url)
             .map((r) => `- [${r.title}](${r.url})`);
 
